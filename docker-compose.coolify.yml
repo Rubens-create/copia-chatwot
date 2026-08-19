@@ -1,8 +1,7 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: '${APP_IMAGE:-ghcr.io/rubens-create/copia-chatwot:latest}'
+    pull_policy: always
     command: /app/api
     restart: always
     environment:
@@ -38,9 +37,8 @@ services:
         condition: service_healthy
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: '${APP_IMAGE:-ghcr.io/rubens-create/copia-chatwot:latest}'
+    pull_policy: always
     command: /app/worker
     restart: always
     environment:
