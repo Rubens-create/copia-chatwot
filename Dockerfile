@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -
 # Final minimal runtime image
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata ffmpeg
 
 WORKDIR /app
 

@@ -137,10 +137,21 @@ func (r *accountRepository) GetDefaultChannelWhatsApp(ctx context.Context, accou
 }
 
 func (r *accountRepository) UpdateChannelWhatsAppConfig(ctx context.Context, accountID int, phoneNumber, phoneID, accessToken, apiVersion string) error {
-	pConfig, _ := json.Marshal(map[string]string{
-		"phone_number_id": phoneID,
-		"api_version":     apiVersion,
-	})
+	// Preserve existing provider settings when the form omits an optional value.
+	providerConfig := map[string]string{}
+	if channel, err := r.GetDefaultChannelWhatsApp(ctx, accountID); err == nil && channel != nil && len(channel.ProviderConfig) > 0 {
+		_ = json.Unmarshal(channel.ProviderConfig, &providerConfig)
+	}
+	if phoneID != "" {
+		providerConfig["phone_number_id"] = phoneID
+	}
+	if apiVersion != "" {
+		providerConfig["api_version"] = apiVersion
+	}
+	pConfig, err := json.Marshal(providerConfig)
+	if err != nil {
+		return fmt.Errorf("failed to encode channel_whatsapp config: %w", err)
+	}
 
 	query := `
 		UPDATE channel_whatsapp

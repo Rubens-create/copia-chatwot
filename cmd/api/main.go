@@ -65,6 +65,22 @@ func main() {
 	eventRepo := repository.NewEventRepository(db)
 	webhookRepo := repository.NewWebhookRepository(db)
 
+	// Load persisted Meta credentials before creating the runtime client.
+	if channel, err := accountRepo.GetDefaultChannelWhatsApp(context.Background(), cfg.DefaultAccountID); err == nil && channel != nil {
+		if channel.BusinessManagementToken != nil && *channel.BusinessManagementToken != "" {
+			cfg.MetaAccessToken = *channel.BusinessManagementToken
+		}
+		var providerConfig map[string]string
+		if len(channel.ProviderConfig) > 0 && json.Unmarshal(channel.ProviderConfig, &providerConfig) == nil {
+			if providerConfig["phone_number_id"] != "" {
+				cfg.MetaPhoneNumberID = providerConfig["phone_number_id"]
+			}
+			if providerConfig["api_version"] != "" {
+				cfg.MetaAPIVersion = providerConfig["api_version"]
+			}
+		}
+	}
+
 	// 4. Initialize Services
 	waClient := whatsapp.NewClient(cfg.MetaAccessToken, cfg.MetaAPIVersion)
 	waService := service.NewWhatsAppService(cfg, db, accountRepo, contactRepo, convRepo, msgRepo, eventRepo, redisQueue)
@@ -116,6 +132,8 @@ func main() {
 			// Update in PostgreSQL channel_whatsapp table
 			if err := accountRepo.UpdateChannelWhatsAppConfig(r.Context(), cfg.DefaultAccountID, payload.PhoneNumber, payload.PhoneNumberID, payload.AccessToken, payload.APIVersion); err != nil {
 				log.Printf("[API] Error updating channel_whatsapp config: %v", err)
+				http.Error(w, `{"error":"não foi possível salvar as credenciais"}`, http.StatusInternalServerError)
+				return
 			}
 
 			// Update in-memory runtime configurations
@@ -162,6 +180,11 @@ func main() {
 				_ = json.Unmarshal(ch.ProviderConfig, &pConfig)
 				if pid, ok := pConfig["phone_number_id"].(string); ok && pid != "" {
 					phoneID = pid
+				}
+				if cfg.MetaAPIVersion == "" {
+					if version, ok := pConfig["api_version"].(string); ok && version != "" {
+						cfg.MetaAPIVersion = version
+					}
 				}
 			}
 		}

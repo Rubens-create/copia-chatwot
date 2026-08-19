@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -195,6 +198,17 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 			mimeType, rawBytes, err := parseDataURL(firstAtt.DataURL)
 			if err == nil && len(rawBytes) > 0 {
 				filename := firstAtt.FallbackTitle
+				if strings.HasPrefix(mimeType, "audio/webm") {
+					rawBytes, err = convertWebMToOgg(ctx, rawBytes)
+					if err == nil {
+						mimeType = "audio/ogg"
+						filename = strings.TrimSuffix(filename, filepath.Ext(filename)) + ".ogg"
+					}
+				}
+				if err != nil {
+					metaErr = fmt.Errorf("audio conversion failed: %w", err)
+					log.Printf("[ConversationService] %v", metaErr)
+				}
 				if filename == "" {
 					ext := "bin"
 					if strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg") {
@@ -213,7 +227,7 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 					filename = fmt.Sprintf("upload_%d.%s", time.Now().Unix(), ext)
 				}
 
-				if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" {
+				if metaErr == nil && s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" {
 					mediaID, uploadErr := s.waClient.UploadMedia(ctx, phoneID, filename, mimeType, rawBytes)
 					if uploadErr != nil {
 						metaErr = uploadErr
@@ -413,4 +427,29 @@ func parseDataURL(dataURL string) (mimeType string, data []byte, err error) {
 	}
 
 	return mimeType, decoded, nil
+}
+
+// convertWebMToOgg converts browser recordings to Ogg/Opus, which is accepted
+// by the WhatsApp Cloud API. The runtime image provides ffmpeg.
+func convertWebMToOgg(ctx context.Context, input []byte) ([]byte, error) {
+	dir, err := os.MkdirTemp("", "whatsapp-audio-")
+	if err != nil {
+		return nil, fmt.Errorf("create audio temp dir: %w", err)
+	}
+	defer os.RemoveAll(dir)
+
+	inPath := filepath.Join(dir, "input.webm")
+	outPath := filepath.Join(dir, "output.ogg")
+	if err := os.WriteFile(inPath, input, 0600); err != nil {
+		return nil, fmt.Errorf("write audio input: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-i", inPath, "-c:a", "libopus", "-b:a", "64k", outPath)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return nil, fmt.Errorf("ffmpeg: %w (%s)", err, strings.TrimSpace(string(output)))
+	}
+	converted, err := os.ReadFile(outPath)
+	if err != nil {
+		return nil, fmt.Errorf("read converted audio: %w", err)
+	}
+	return converted, nil
 }
