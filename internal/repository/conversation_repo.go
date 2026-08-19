@@ -23,6 +23,7 @@ type ConversationRepository interface {
 	CreateTx(ctx context.Context, tx pgx.Tx, conv *model.Conversation) (*model.Conversation, error)
 	UpdateLastActivity(ctx context.Context, conversationID int) error
 	UpdateLastActivityTx(ctx context.Context, tx pgx.Tx, conversationID int) error
+	UpdateAdditionalAttributesTx(ctx context.Context, tx pgx.Tx, conversationID int, additionalAttrs []byte) error
 	List(ctx context.Context, accountID, inboxID int, status *int, limit, offset int) ([]model.Conversation, error)
 	FindByID(ctx context.Context, id int) (*model.Conversation, error)
 }
@@ -233,9 +234,14 @@ func (r *conversationRepository) UpdateLastActivity(ctx context.Context, convers
 }
 
 func (r *conversationRepository) UpdateLastActivityTx(ctx context.Context, tx pgx.Tx, conversationID int) error {
-	now := time.Now().UTC()
-	query := `UPDATE conversations SET last_activity_at = $1, updated_at = $1 WHERE id = $2`
-	_, err := tx.Exec(ctx, query, now, conversationID)
+	query := `UPDATE conversations SET last_activity_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1`
+	_, err := tx.Exec(ctx, query, conversationID)
+	return err
+}
+
+func (r *conversationRepository) UpdateAdditionalAttributesTx(ctx context.Context, tx pgx.Tx, conversationID int, additionalAttrs []byte) error {
+	query := `UPDATE conversations SET additional_attributes = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err := tx.Exec(ctx, query, additionalAttrs, conversationID)
 	return err
 }
 

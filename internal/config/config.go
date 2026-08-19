@@ -14,6 +14,7 @@ type Config struct {
 	MetaAppSecret     string
 	MetaAPIVersion    string
 	MetaAccessToken   string
+	MetaPhoneNumberID string
 	DefaultAccountID  int
 	DefaultInboxID    int
 	LogLevel          string
@@ -30,6 +31,7 @@ func Load() *Config {
 		MetaAppSecret:     getEnv("META_APP_SECRET", ""),
 		MetaAPIVersion:    getEnv("META_API_VERSION", "v19.0"),
 		MetaAccessToken:   getEnv("META_ACCESS_TOKEN", ""),
+		MetaPhoneNumberID: getEnv("META_PHONE_NUMBER_ID", ""),
 		DefaultAccountID:  getEnvAsInt("DEFAULT_ACCOUNT_ID", 1),
 		DefaultInboxID:    getEnvAsInt("DEFAULT_INBOX_ID", 1),
 		LogLevel:          getEnv("LOG_LEVEL", "info"),

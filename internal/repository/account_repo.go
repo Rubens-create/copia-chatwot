@@ -15,6 +15,7 @@ type AccountRepository interface {
 	FindChannelByPhoneOrConfig(ctx context.Context, phone, phoneID string) (*model.ChannelWhatsapp, error)
 	FindInboxByID(ctx context.Context, id int) (*model.Inbox, error)
 	FindInboxByChannelID(ctx context.Context, channelID int) (*model.Inbox, error)
+	FindChannelByInboxID(ctx context.Context, inboxID int) (*model.ChannelWhatsapp, error)
 }
 
 type accountRepository struct {
@@ -88,4 +89,25 @@ func (r *accountRepository) FindInboxByChannelID(ctx context.Context, channelID 
 		return nil, fmt.Errorf("error finding inbox by channel_id: %w", err)
 	}
 	return &inb, nil
+}
+
+func (r *accountRepository) FindChannelByInboxID(ctx context.Context, inboxID int) (*model.ChannelWhatsapp, error) {
+	query := `
+		SELECT c.id, c.account_id, c.phone_number, c.provider, c.provider_config, c.business_management_token, c.created_at, c.updated_at
+		FROM channel_whatsapp c
+		JOIN inboxes i ON i.channel_id = c.id
+		WHERE i.id = $1 AND i.channel_type = 'Channel::Whatsapp'
+		LIMIT 1
+	`
+	row := r.db.Pool.QueryRow(ctx, query, inboxID)
+
+	var ch model.ChannelWhatsapp
+	err := row.Scan(&ch.ID, &ch.AccountID, &ch.PhoneNumber, &ch.Provider, &ch.ProviderConfig, &ch.BusinessManagementToken, &ch.CreatedAt, &ch.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding channel_whatsapp by inbox_id: %w", err)
+	}
+	return &ch, nil
 }

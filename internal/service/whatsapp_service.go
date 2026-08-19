@@ -153,6 +153,19 @@ func (s *whatsAppService) processIncomingMessage(ctx context.Context, msg whatsa
 		}
 	}
 
+	if conv != nil && msg.PhoneNumberID != "" {
+		// Ensure active conversation always has the latest valid phone_number_id
+		attrsMap := map[string]interface{}{}
+		if len(conv.AdditionalAttributes) > 0 {
+			_ = json.Unmarshal(conv.AdditionalAttributes, &attrsMap)
+		}
+		attrsMap["whatsapp_phone_number_id"] = msg.PhoneNumberID
+		if updatedAttrs, err := json.Marshal(attrsMap); err == nil {
+			conv.AdditionalAttributes = updatedAttrs
+			_ = s.conversationRepo.UpdateAdditionalAttributesTx(ctx, tx, conv.ID, updatedAttrs)
+		}
+	}
+
 	// If no existing or reopenable conversation found, create a new one
 	if conv == nil {
 		isNewConversation = true

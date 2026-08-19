@@ -104,16 +104,41 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 		return nil, fmt.Errorf("contact not found: %w", err)
 	}
 
-	phoneID := "default"
-	var addAttrs map[string]interface{}
+	phoneID := ""
 	if len(conv.AdditionalAttributes) > 0 {
+		var addAttrs map[string]interface{}
 		_ = json.Unmarshal(conv.AdditionalAttributes, &addAttrs)
-		if pid, ok := addAttrs["whatsapp_phone_number_id"].(string); ok && pid != "" {
+		if pid, ok := addAttrs["whatsapp_phone_number_id"].(string); ok && pid != "" && pid != "default" && pid != "phone_123" {
 			phoneID = pid
 		}
 	}
 
+	if phoneID == "" {
+		if ch, err := s.accountRepo.FindChannelByInboxID(ctx, conv.InboxID); err == nil && ch != nil {
+			if len(ch.ProviderConfig) > 0 {
+				var pConfig map[string]interface{}
+				_ = json.Unmarshal(ch.ProviderConfig, &pConfig)
+				if pid, ok := pConfig["phone_number_id"].(string); ok && pid != "" {
+					phoneID = pid
+				}
+			}
+			if phoneID == "" && ch.PhoneNumber != "" && ch.PhoneNumber != "default" {
+				phoneID = ch.PhoneNumber
+			}
+		}
+	}
+
+	if phoneID == "" && s.cfg.MetaPhoneNumberID != "" {
+		phoneID = s.cfg.MetaPhoneNumberID
+	}
+
+	if phoneID == "" {
+		phoneID = "default"
+		log.Printf("[ConversationService] Notice: No specific Phone Number ID found for conversation %d. Using fallback '%s'. Consider setting META_PHONE_NUMBER_ID in .env", conversationID, phoneID)
+	}
+
 	var sourceID string
+	var metaErr error
 	contentType := model.ContentTypeText
 	var contentAttributes json.RawMessage
 
@@ -142,20 +167,22 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 			"template_language":   templateLang,
 			"template_components": templateComponents,
 		}
-		contentAttributes, _ = json.Marshal(attrMap)
 
 		if params.Content == "" {
 			params.Content = fmt.Sprintf("[Template: %s]", templateName)
 		}
 
-		if s.waClient != nil && s.cfg.MetaAccessToken != "" {
+		if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" {
 			resp, err := s.waClient.SendTemplate(ctx, phoneID, contact.PhoneNumber, templateName, templateLang, templateComponents)
 			if err != nil {
-				log.Printf("[ConversationService] Warning: Meta API send template failed (%v). Persisting locally.", err)
+				metaErr = err
+				log.Printf("[ConversationService] Meta API SendTemplate failed: %v", err)
+				attrMap["error"] = err.Error()
 			} else if resp != nil && len(resp.Messages) > 0 {
 				sourceID = resp.Messages[0].ID
 			}
 		}
+		contentAttributes, _ = json.Marshal(attrMap)
 	} else if len(params.Attachments) > 0 {
 		// 2. Attachments / Media Message Handling
 		firstAtt := params.Attachments[0]
@@ -164,7 +191,7 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 			url = firstAtt.DataURL
 		}
 
-		if s.waClient != nil && s.cfg.MetaAccessToken != "" && url != "" {
+		if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" && url != "" {
 			var resp *whatsapp.SendMessageResponse
 			var sendErr error
 
@@ -184,17 +211,19 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 			}
 
 			if sendErr != nil {
-				log.Printf("[ConversationService] Warning: Meta API media send failed (%v). Persisting locally.", sendErr)
+				metaErr = sendErr
+				log.Printf("[ConversationService] Meta API media send failed: %v", sendErr)
 			} else if resp != nil && len(resp.Messages) > 0 {
 				sourceID = resp.Messages[0].ID
 			}
 		}
 	} else {
 		// 3. Plain Text Message
-		if s.waClient != nil && s.cfg.MetaAccessToken != "" && params.Content != "" {
+		if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" && params.Content != "" {
 			resp, err := s.waClient.SendText(ctx, phoneID, contact.PhoneNumber, params.Content)
 			if err != nil {
-				log.Printf("[ConversationService] Warning: Meta API send text failed (%v). Persisting locally.", err)
+				metaErr = err
+				log.Printf("[ConversationService] Meta API SendText failed: %v", err)
 			} else if resp != nil && len(resp.Messages) > 0 {
 				sourceID = resp.Messages[0].ID
 			}
@@ -213,20 +242,33 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 		contentPtr = &params.Content
 	}
 
+	msgStatus := model.MessageStatusSent
+	if metaErr != nil {
+		msgStatus = model.MessageStatusFailed
+	}
+
+	additionalAttrsMap := map[string]interface{}{}
+	if metaErr != nil {
+		additionalAttrsMap["send_error"] = metaErr.Error()
+	}
+	additionalAttrsBytes, _ := json.Marshal(additionalAttrsMap)
+
 	msg := &model.Message{
-		Content:           contentPtr,
-		AccountID:         conv.AccountID,
-		InboxID:           conv.InboxID,
-		ConversationID:    conv.ID,
-		MessageType:       model.MessageTypeOutgoing,
-		ContentType:       contentType,
-		ContentAttributes: contentAttributes,
-		SenderType:        "User",
-		SourceID:          &sourceID,
-		ExternalSourceIDs: externalSourceIDs,
-		Status:            model.MessageStatusSent,
-		Private:           params.Private,
-		CreatedAt:         now,
+		Content:              contentPtr,
+		AccountID:            conv.AccountID,
+		InboxID:              conv.InboxID,
+		ConversationID:       conv.ID,
+		MessageType:          model.MessageTypeOutgoing,
+		ContentType:          contentType,
+		ContentAttributes:    contentAttributes,
+		SenderType:           "User",
+		SourceID:             &sourceID,
+		ExternalSourceIDs:    externalSourceIDs,
+		AdditionalAttributes: additionalAttrsBytes,
+		Status:               msgStatus,
+		Private:              params.Private,
+		CreatedAt:            now,
+		UpdatedAt:            now,
 	}
 
 	created, err := s.messageRepo.Create(ctx, msg)
