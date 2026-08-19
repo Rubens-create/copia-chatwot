@@ -1,0 +1,215 @@
+openapi: 3.0.3
+info:
+  title: Chatwoot Lite WhatsApp Gateway API
+  version: 1.1.0
+  description: |
+    API para consultar conversas e enviar mensagens pelo WhatsApp Cloud API.
+    No ambiente de testes, clique em Authorize e informe o API_ACCESS_TOKEN.
+servers:
+  - url: /
+    description: Ambiente atual
+security:
+  - ApiAccessToken: []
+tags:
+  - name: Sistema
+  - name: Conversas
+  - name: Mensagens
+  - name: Configuração Meta
+paths:
+  /health:
+    get:
+      tags: [Sistema]
+      summary: Verifica se a API está ativa
+      security: []
+      responses:
+        '200': { description: API ativa }
+  /ready:
+    get:
+      tags: [Sistema]
+      summary: Verifica PostgreSQL e Redis
+      security: []
+      responses:
+        '200': { description: Dependências disponíveis }
+        '503': { description: Alguma dependência está indisponível }
+  /api/v1/accounts/{account_id}/conversations:
+    get:
+      tags: [Conversas]
+      summary: Lista conversas
+      parameters:
+        - $ref: '#/components/parameters/AccountID'
+        - name: inbox_id
+          in: query
+          schema: { type: integer }
+        - name: status
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: Lista de conversas }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/accounts/{account_id}/conversations/{conversation_id}:
+    get:
+      tags: [Conversas]
+      summary: Obtém uma conversa
+      parameters:
+        - $ref: '#/components/parameters/AccountID'
+        - $ref: '#/components/parameters/ConversationID'
+      responses:
+        '200': { description: Conversa encontrada }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Conversa não encontrada }
+  /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages:
+    get:
+      tags: [Mensagens]
+      summary: Lista mensagens da conversa
+      parameters:
+        - $ref: '#/components/parameters/AccountID'
+        - $ref: '#/components/parameters/ConversationID'
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200': { description: Lista de mensagens }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Mensagens]
+      summary: Envia texto, mídia, áudio ou mensagem de voz
+      description: |
+        Em JSON, is_voice pertence ao objeto de áudio em attachments.
+        Para voz, use Ogg/Opus e is_voice true. Para áudio básico, use false ou omita.
+        Em multipart, envie o arquivo em attachments[] e is_voice=true.
+      parameters:
+        - $ref: '#/components/parameters/AccountID'
+        - $ref: '#/components/parameters/ConversationID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendMessageRequest' }
+            examples:
+              voiceMessage:
+                summary: Mensagem de voz por URL
+                value:
+                  attachments:
+                    - file_type: 1
+                      external_url: https://example.com/audio.ogg
+                      fallback_title: audio.ogg
+                      is_voice: true
+              basicAudio:
+                summary: Áudio básico
+                value:
+                  attachments:
+                    - file_type: 1
+                      external_url: https://example.com/audio.mp3
+                      fallback_title: audio.mp3
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                content: { type: string }
+                'attachments[]':
+                  type: string
+                  format: binary
+                  description: Arquivo de imagem, áudio, vídeo ou documento.
+                is_voice:
+                  type: boolean
+                  default: false
+                  description: Use true somente para mensagem de voz em Ogg/Opus.
+                private: { type: boolean, default: false }
+              required: ['attachments[]']
+      responses:
+        '201': { description: Mensagem criada e enviada }
+        '400': { description: Payload inválido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { description: Falha no envio }
+  /api/config/meta:
+    get:
+      tags: [Configuração Meta]
+      summary: Consulta a configuração Meta ativa
+      security: []
+      responses:
+        '200': { description: Configuração atual }
+    post:
+      tags: [Configuração Meta]
+      summary: Salva credenciais da Meta
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_number_id, access_token]
+              properties:
+                phone_number_id: { type: string }
+                phone_number: { type: string }
+                access_token: { type: string, format: password }
+                api_version: { type: string, example: v23.0 }
+      responses:
+        '200': { description: Credenciais salvas }
+        '500': { description: Falha ao persistir credenciais }
+components:
+  securitySchemes:
+    ApiAccessToken:
+      type: apiKey
+      in: header
+      name: api_access_token
+      description: Valor configurado em API_ACCESS_TOKEN.
+  parameters:
+    AccountID:
+      name: account_id
+      in: path
+      required: true
+      schema: { type: integer, default: 1 }
+    ConversationID:
+      name: conversation_id
+      in: path
+      required: true
+      schema: { type: integer }
+  responses:
+    Unauthorized:
+      description: Token ausente ou inválido
+  schemas:
+    Attachment:
+      type: object
+      required: [file_type]
+      properties:
+        file_type:
+          type: integer
+          enum: [0, 1, 2, 3, 4, 7]
+          description: 0 imagem, 1 áudio, 2 vídeo, 3 documento, 4 localização, 7 contato.
+        external_url: { type: string, format: uri }
+        data_url:
+          type: string
+          description: Data URL Base64. WebM gravado é convertido para Ogg/Opus.
+        fallback_title: { type: string }
+        extension: { type: string }
+        coordinates_lat: { type: number, format: double }
+        coordinates_long: { type: number, format: double }
+        is_voice:
+          type: boolean
+          default: false
+          description: Quando true, envia como mensagem de voz. O arquivo final deve ser Ogg/Opus.
+    SendMessageRequest:
+      type: object
+      properties:
+        content: { type: string }
+        attachments:
+          type: array
+          maxItems: 1
+          items: { $ref: '#/components/schemas/Attachment' }
+        private: { type: boolean, default: false }
+        template_name: { type: string }
+        template_language: { type: string, example: pt_BR }
+      anyOf:
+        - required: [content]
+        - required: [attachments]
+        - required: [template_name]

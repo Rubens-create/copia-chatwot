@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -128,6 +130,7 @@ func (h *ConversationHandler) HandleMessages(w http.ResponseWriter, r *http.Requ
 			if r.FormValue("private") == "true" {
 				req.Private = true
 			}
+			isVoice := r.FormValue("is_voice") == "true"
 
 			var fileHeaders []*multipart.FileHeader
 			if r.MultipartForm != nil && r.MultipartForm.File != nil {
@@ -150,6 +153,9 @@ func (h *ConversationHandler) HandleMessages(w http.ResponseWriter, r *http.Requ
 				}
 
 				mimeType := fh.Header.Get("Content-Type")
+				if mimeType == "" || mimeType == "application/octet-stream" {
+					mimeType = uploadMIMEByFilename(fh.Filename)
+				}
 				if mimeType == "" {
 					mimeType = http.DetectContentType(data)
 				}
@@ -168,6 +174,7 @@ func (h *ConversationHandler) HandleMessages(w http.ResponseWriter, r *http.Requ
 					FileType:      fileType,
 					DataURL:       dataURL,
 					FallbackTitle: fh.Filename,
+					IsVoice:       isVoice && fileType == 1,
 				})
 			}
 		} else {
@@ -201,6 +208,24 @@ func (h *ConversationHandler) HandleMessages(w http.ResponseWriter, r *http.Requ
 
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func uploadMIMEByFilename(filename string) string {
+	extension := strings.ToLower(filepath.Ext(filename))
+	switch extension {
+	case ".ogg", ".opus":
+		return "audio/ogg"
+	case ".mp3":
+		return "audio/mpeg"
+	case ".m4a":
+		return "audio/mp4"
+	case ".wav":
+		return "audio/wav"
+	case ".webm":
+		return "audio/webm"
+	default:
+		return mime.TypeByExtension(extension)
 	}
 }
 

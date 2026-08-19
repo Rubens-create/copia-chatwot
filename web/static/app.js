@@ -413,7 +413,8 @@ async function startAudioRecording() {
           stagedAttachment = {
             file_type: 1, // audio
             data_url: reader.result,
-            fallback_title: `audio_gravado_${Date.now()}.${mimeType.includes('webm') ? 'webm' : 'ogg'}`
+            fallback_title: `audio_gravado_${Date.now()}.${mimeType.includes('webm') ? 'webm' : 'ogg'}`,
+            is_voice: true
           };
           renderStagedAttachment();
         };

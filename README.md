@@ -66,6 +66,7 @@ docker compose up --build -d
 
 Serviços iniciados:
 * **API REST & UI:** `http://localhost:8080`
+* **Documentação e ambiente de testes:** `http://localhost:8080/docs`
 * **Worker Assíncrono:** background process
 * **PostgreSQL:** `localhost:5432`
 * **Redis:** `localhost:6379`
@@ -102,6 +103,27 @@ go run ./cmd/worker
 | `POST` | `/api/conversations/:id/messages` | Envio de mensagem para o contato |
 | `GET` | `/api/webhooks` | Lista webhooks externos cadastrados |
 | `POST` | `/api/webhooks` | Cadastra novo webhook externo com secret HMAC |
+
+### Envio de mensagem de voz
+
+O parâmetro `is_voice` é opcional e pertence ao anexo de áudio. Use `true` somente para mensagem de voz. O arquivo final enviado à Meta precisa ser Ogg codificado com Opus. Gravações WebM feitas pela interface são convertidas automaticamente.
+
+```json
+{
+  "attachments": [
+    {
+      "file_type": 1,
+      "external_url": "https://exemplo.com/audio.ogg",
+      "fallback_title": "audio.ogg",
+      "is_voice": true
+    }
+  ]
+}
+```
+
+Para áudio básico, defina `is_voice` como `false` ou omita o campo. Em requisições `multipart/form-data`, envie `is_voice=true` junto com o arquivo em `attachments[]`.
+
+A especificação OpenAPI está disponível em `/openapi.yaml`. A interface Swagger em `/docs` permite autorizar com `API_ACCESS_TOKEN` e executar requisições no ambiente atual.
 
 ---
 

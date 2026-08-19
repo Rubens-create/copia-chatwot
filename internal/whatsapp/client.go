@@ -27,7 +27,7 @@ type SendMessageResponse struct {
 type WhatsAppClient interface {
 	SendText(ctx context.Context, phoneNumberID, to, text string) (*SendMessageResponse, error)
 	SendImage(ctx context.Context, phoneNumberID, to, mediaIDOrURL, caption string) (*SendMessageResponse, error)
-	SendAudio(ctx context.Context, phoneNumberID, to, mediaIDOrURL string) (*SendMessageResponse, error)
+	SendAudio(ctx context.Context, phoneNumberID, to, mediaIDOrURL string, isVoice bool) (*SendMessageResponse, error)
 	SendVideo(ctx context.Context, phoneNumberID, to, mediaIDOrURL, caption string) (*SendMessageResponse, error)
 	SendDocument(ctx context.Context, phoneNumberID, to, mediaIDOrURL, filename, caption string) (*SendMessageResponse, error)
 	SendLocation(ctx context.Context, phoneNumberID, to string, lat, long float64, name, address string) (*SendMessageResponse, error)
@@ -215,13 +215,16 @@ func (c *metaClient) SendImage(ctx context.Context, phoneNumberID, to, mediaIDOr
 	return c.sendRequest(ctx, phoneNumberID, payload)
 }
 
-func (c *metaClient) SendAudio(ctx context.Context, phoneNumberID, to, mediaIDOrURL string) (*SendMessageResponse, error) {
+func (c *metaClient) SendAudio(ctx context.Context, phoneNumberID, to, mediaIDOrURL string, isVoice bool) (*SendMessageResponse, error) {
 	toFormatted := NormalizePhoneNumber(to)
 	audioObj := map[string]interface{}{}
 	if strings.HasPrefix(mediaIDOrURL, "http://") || strings.HasPrefix(mediaIDOrURL, "https://") {
 		audioObj["link"] = mediaIDOrURL
 	} else {
 		audioObj["id"] = mediaIDOrURL
+	}
+	if isVoice {
+		audioObj["voice"] = true
 	}
 
 	payload := map[string]interface{}{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,7 +13,9 @@ import (
 	"github.com/chatwoot-lite/whatsapp-gateway/internal/service"
 )
 
-type dummyConversationService struct{}
+type dummyConversationService struct {
+	lastParams service.SendMessageParams
+}
 
 func (d *dummyConversationService) ListConversations(ctx context.Context, accountID, inboxID int, status *int, limit, offset int) ([]model.Conversation, error) {
 	return []model.Conversation{{ID: 1, AccountID: 1}}, nil
@@ -28,7 +31,45 @@ func (d *dummyConversationService) GetMessages(ctx context.Context, conversation
 }
 
 func (d *dummyConversationService) SendMessage(ctx context.Context, conversationID int, params service.SendMessageParams) (*model.Message, error) {
+	d.lastParams = params
 	return &model.Message{ID: 100, ConversationID: conversationID, Content: &params.Content}, nil
+}
+
+func TestHandleMessagesMultipartPassesVoiceFlagToAudioAttachment(t *testing.T) {
+	convService := &dummyConversationService{}
+	convHandler := NewConversationHandler(convService)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("is_voice", "true"); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("attachments[]", "gravacao.ogg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("OggS-test")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/1/conversations/42/messages", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	w := httptest.NewRecorder()
+	convHandler.HandleMessages(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(convService.lastParams.Attachments) != 1 {
+		t.Fatalf("expected one attachment, got %d", len(convService.lastParams.Attachments))
+	}
+	attachment := convService.lastParams.Attachments[0]
+	if attachment.FileType != 1 || !attachment.IsVoice {
+		t.Fatalf("voice attachment not propagated: %#v", attachment)
+	}
 }
 
 func TestAuthMiddleware(t *testing.T) {

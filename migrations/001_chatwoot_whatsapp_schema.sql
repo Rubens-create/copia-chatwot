@@ -191,7 +191,7 @@ WHERE source_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS attachments (
     id SERIAL PRIMARY KEY,
     file_type INTEGER DEFAULT 0,
-    external_url VARCHAR(255),
+    external_url TEXT,
     coordinates_lat FLOAT DEFAULT 0.0,
     coordinates_long FLOAT DEFAULT 0.0,
     message_id INTEGER NOT NULL,
@@ -202,6 +202,11 @@ CREATE TABLE IF NOT EXISTS attachments (
     extension VARCHAR(255),
     meta JSONB DEFAULT '{}'::jsonb
 );
+
+-- Existing installations used VARCHAR(255), which is too small for Base64
+-- Data URLs used to preview outgoing images, audio and documents in the chat.
+ALTER TABLE attachments
+    ALTER COLUMN external_url TYPE TEXT;
 
 CREATE INDEX IF NOT EXISTS index_attachments_on_account_id ON attachments (account_id);
 CREATE INDEX IF NOT EXISTS index_attachments_on_message_id ON attachments (message_id);

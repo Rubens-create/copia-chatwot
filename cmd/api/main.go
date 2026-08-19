@@ -249,6 +249,9 @@ func main() {
 	}
 	if staticDir != "" {
 		fileServer := http.FileServer(http.Dir(staticDir))
+		mux.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/docs.html", http.StatusTemporaryRedirect)
+		})
 		mux.Handle("/", fileServer)
 	}
 

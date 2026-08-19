@@ -29,6 +29,15 @@ func (m *mockAccountRepo) FindInboxByID(ctx context.Context, id int) (*model.Inb
 func (m *mockAccountRepo) FindInboxByChannelID(ctx context.Context, channelID int) (*model.Inbox, error) {
 	return &model.Inbox{ID: 1, AccountID: 1, ChannelID: channelID, Name: "WhatsApp"}, nil
 }
+func (m *mockAccountRepo) FindChannelByInboxID(ctx context.Context, inboxID int) (*model.ChannelWhatsapp, error) {
+	return &model.ChannelWhatsapp{ID: 1, AccountID: 1, PhoneNumber: "default"}, nil
+}
+func (m *mockAccountRepo) GetDefaultChannelWhatsApp(ctx context.Context, accountID int) (*model.ChannelWhatsapp, error) {
+	return &model.ChannelWhatsapp{ID: 1, AccountID: accountID, PhoneNumber: "default"}, nil
+}
+func (m *mockAccountRepo) UpdateChannelWhatsAppConfig(ctx context.Context, accountID int, phoneNumber, phoneID, accessToken, apiVersion string) error {
+	return nil
+}
 
 type mockContactRepo struct {
 	contacts map[string]*model.Contact
@@ -128,6 +137,15 @@ func (m *mockConvRepo) UpdateLastActivity(ctx context.Context, conversationID in
 }
 
 func (m *mockConvRepo) UpdateLastActivityTx(ctx context.Context, tx pgx.Tx, conversationID int) error {
+	return nil
+}
+
+func (m *mockConvRepo) UpdateAdditionalAttributesTx(ctx context.Context, tx pgx.Tx, conversationID int, additionalAttrs []byte) error {
+	for _, conversation := range m.conversations {
+		if conversation.ID == conversationID {
+			conversation.AdditionalAttributes = json.RawMessage(additionalAttrs)
+		}
+	}
 	return nil
 }
 

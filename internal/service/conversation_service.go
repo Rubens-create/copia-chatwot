@@ -28,6 +28,7 @@ type AttachmentParam struct {
 	Extension       string  `json:"extension,omitempty"`
 	CoordinatesLat  float64 `json:"coordinates_lat,omitempty"`
 	CoordinatesLong float64 `json:"coordinates_long,omitempty"`
+	IsVoice         bool    `json:"is_voice,omitempty"`
 }
 
 type TemplateParam struct {
@@ -251,7 +252,7 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 			case 0: // Image
 				resp, sendErr = s.waClient.SendImage(ctx, phoneID, contact.PhoneNumber, mediaTarget, params.Content)
 			case 1: // Audio
-				resp, sendErr = s.waClient.SendAudio(ctx, phoneID, contact.PhoneNumber, mediaTarget)
+				resp, sendErr = s.waClient.SendAudio(ctx, phoneID, contact.PhoneNumber, mediaTarget, firstAtt.IsVoice)
 			case 2: // Video
 				resp, sendErr = s.waClient.SendVideo(ctx, phoneID, contact.PhoneNumber, mediaTarget, params.Content)
 			case 3: // File/Document
@@ -356,7 +357,10 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 			UpdatedAt:       now,
 		}
 		savedAtt, err := s.messageRepo.CreateAttachment(ctx, dbAtt)
-		if err == nil && savedAtt != nil {
+		if err != nil {
+			return nil, fmt.Errorf("failed to persist outgoing attachment: %w", err)
+		}
+		if savedAtt != nil {
 			created.Attachments = append(created.Attachments, *savedAtt)
 		}
 	}
