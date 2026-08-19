@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"time"
 )
@@ -24,12 +26,13 @@ type SendMessageResponse struct {
 
 type WhatsAppClient interface {
 	SendText(ctx context.Context, phoneNumberID, to, text string) (*SendMessageResponse, error)
-	SendImage(ctx context.Context, phoneNumberID, to, imageURL, caption string) (*SendMessageResponse, error)
-	SendAudio(ctx context.Context, phoneNumberID, to, audioURL string) (*SendMessageResponse, error)
-	SendVideo(ctx context.Context, phoneNumberID, to, videoURL, caption string) (*SendMessageResponse, error)
-	SendDocument(ctx context.Context, phoneNumberID, to, docURL, filename, caption string) (*SendMessageResponse, error)
+	SendImage(ctx context.Context, phoneNumberID, to, mediaIDOrURL, caption string) (*SendMessageResponse, error)
+	SendAudio(ctx context.Context, phoneNumberID, to, mediaIDOrURL string) (*SendMessageResponse, error)
+	SendVideo(ctx context.Context, phoneNumberID, to, mediaIDOrURL, caption string) (*SendMessageResponse, error)
+	SendDocument(ctx context.Context, phoneNumberID, to, mediaIDOrURL, filename, caption string) (*SendMessageResponse, error)
 	SendLocation(ctx context.Context, phoneNumberID, to string, lat, long float64, name, address string) (*SendMessageResponse, error)
 	SendTemplate(ctx context.Context, phoneNumberID, to, templateName, languageCode string, components []interface{}) (*SendMessageResponse, error)
+	UploadMedia(ctx context.Context, phoneNumberID, filename, mimeType string, data []byte) (string, error)
 	UpdateCredentials(accessToken, apiVersion string)
 }
 
@@ -47,7 +50,7 @@ func NewClient(accessToken, apiVersion string) WhatsAppClient {
 		accessToken: accessToken,
 		apiVersion:  apiVersion,
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 25 * time.Second,
 		},
 	}
 }
@@ -59,6 +62,79 @@ func (c *metaClient) UpdateCredentials(accessToken, apiVersion string) {
 	if apiVersion != "" {
 		c.apiVersion = apiVersion
 	}
+}
+
+func (c *metaClient) UploadMedia(ctx context.Context, phoneNumberID, filename, mimeType string, data []byte) (string, error) {
+	url := fmt.Sprintf("https://graph.facebook.com/%s/%s/media", c.apiVersion, phoneNumberID)
+
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+
+	if err := w.WriteField("messaging_product", "whatsapp"); err != nil {
+		return "", fmt.Errorf("failed to write messaging_product field: %w", err)
+	}
+
+	if mimeType != "" {
+		if err := w.WriteField("type", mimeType); err != nil {
+			return "", fmt.Errorf("failed to write type field: %w", err)
+		}
+	}
+
+	partHeader := make(textproto.MIMEHeader)
+	partHeader.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, filename))
+	if mimeType != "" {
+		partHeader.Set("Content-Type", mimeType)
+	}
+	part, err := w.CreatePart(partHeader)
+	if err != nil {
+		return "", fmt.Errorf("failed to create form file: %w", err)
+	}
+
+	if _, err := part.Write(data); err != nil {
+		return "", fmt.Errorf("failed to write file data: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &b)
+	if err != nil {
+		return "", fmt.Errorf("failed to create http request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	if c.accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute upload request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read upload response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("meta media upload error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var uploadResult struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(respBody, &uploadResult); err != nil {
+		return "", fmt.Errorf("failed to decode upload response: %w", err)
+	}
+
+	if uploadResult.ID == "" {
+		return "", fmt.Errorf("meta returned empty media id: %s", string(respBody))
+	}
+
+	return uploadResult.ID, nil
 }
 
 func (c *metaClient) sendRequest(ctx context.Context, phoneNumberID string, payload map[string]interface{}) (*SendMessageResponse, error) {
@@ -103,81 +179,110 @@ func (c *metaClient) sendRequest(ctx context.Context, phoneNumberID string, payl
 }
 
 func (c *metaClient) SendText(ctx context.Context, phoneNumberID, to, text string) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+	toFormatted := NormalizePhoneNumber(to)
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "text",
-		"text": map[string]string{
-			"body": text,
+		"text": map[string]interface{}{
+			"preview_url": false,
+			"body":        text,
 		},
 	}
 	return c.sendRequest(ctx, phoneNumberID, payload)
 }
 
-func (c *metaClient) SendImage(ctx context.Context, phoneNumberID, to, imageURL, caption string) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+func (c *metaClient) SendImage(ctx context.Context, phoneNumberID, to, mediaIDOrURL, caption string) (*SendMessageResponse, error) {
+	toFormatted := NormalizePhoneNumber(to)
+	imgObj := map[string]interface{}{}
+	if strings.HasPrefix(mediaIDOrURL, "http://") || strings.HasPrefix(mediaIDOrURL, "https://") {
+		imgObj["link"] = mediaIDOrURL
+	} else {
+		imgObj["id"] = mediaIDOrURL
+	}
+	if caption != "" {
+		imgObj["caption"] = caption
+	}
+
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "image",
-		"image": map[string]string{
-			"link":    imageURL,
-			"caption": caption,
-		},
+		"image":             imgObj,
 	}
 	return c.sendRequest(ctx, phoneNumberID, payload)
 }
 
-func (c *metaClient) SendAudio(ctx context.Context, phoneNumberID, to, audioURL string) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+func (c *metaClient) SendAudio(ctx context.Context, phoneNumberID, to, mediaIDOrURL string) (*SendMessageResponse, error) {
+	toFormatted := NormalizePhoneNumber(to)
+	audioObj := map[string]interface{}{}
+	if strings.HasPrefix(mediaIDOrURL, "http://") || strings.HasPrefix(mediaIDOrURL, "https://") {
+		audioObj["link"] = mediaIDOrURL
+	} else {
+		audioObj["id"] = mediaIDOrURL
+	}
+
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "audio",
-		"audio": map[string]string{
-			"link": audioURL,
-		},
+		"audio":             audioObj,
 	}
 	return c.sendRequest(ctx, phoneNumberID, payload)
 }
 
-func (c *metaClient) SendVideo(ctx context.Context, phoneNumberID, to, videoURL, caption string) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+func (c *metaClient) SendVideo(ctx context.Context, phoneNumberID, to, mediaIDOrURL, caption string) (*SendMessageResponse, error) {
+	toFormatted := NormalizePhoneNumber(to)
+	vidObj := map[string]interface{}{}
+	if strings.HasPrefix(mediaIDOrURL, "http://") || strings.HasPrefix(mediaIDOrURL, "https://") {
+		vidObj["link"] = mediaIDOrURL
+	} else {
+		vidObj["id"] = mediaIDOrURL
+	}
+	if caption != "" {
+		vidObj["caption"] = caption
+	}
+
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "video",
-		"video": map[string]string{
-			"link":    videoURL,
-			"caption": caption,
-		},
+		"video":             vidObj,
 	}
 	return c.sendRequest(ctx, phoneNumberID, payload)
 }
 
-func (c *metaClient) SendDocument(ctx context.Context, phoneNumberID, to, docURL, filename, caption string) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+func (c *metaClient) SendDocument(ctx context.Context, phoneNumberID, to, mediaIDOrURL, filename, caption string) (*SendMessageResponse, error) {
+	toFormatted := NormalizePhoneNumber(to)
+	docObj := map[string]interface{}{}
+	if strings.HasPrefix(mediaIDOrURL, "http://") || strings.HasPrefix(mediaIDOrURL, "https://") {
+		docObj["link"] = mediaIDOrURL
+	} else {
+		docObj["id"] = mediaIDOrURL
+	}
+	if filename != "" {
+		docObj["filename"] = filename
+	}
+	if caption != "" {
+		docObj["caption"] = caption
+	}
+
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "document",
-		"document": map[string]string{
-			"link":     docURL,
-			"filename": filename,
-			"caption":  caption,
-		},
+		"document":          docObj,
 	}
 	return c.sendRequest(ctx, phoneNumberID, payload)
 }
 
 func (c *metaClient) SendLocation(ctx context.Context, phoneNumberID, to string, lat, long float64, name, address string) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+	toFormatted := NormalizePhoneNumber(to)
 	locationData := map[string]interface{}{
 		"latitude":  lat,
 		"longitude": long,
@@ -191,7 +296,7 @@ func (c *metaClient) SendLocation(ctx context.Context, phoneNumberID, to string,
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "location",
 		"location":          locationData,
 	}
@@ -199,7 +304,7 @@ func (c *metaClient) SendLocation(ctx context.Context, phoneNumberID, to string,
 }
 
 func (c *metaClient) SendTemplate(ctx context.Context, phoneNumberID, to, templateName, languageCode string, components []interface{}) (*SendMessageResponse, error) {
-	toDigits := strings.TrimPrefix(NormalizePhoneNumber(to), "+")
+	toFormatted := NormalizePhoneNumber(to)
 	if languageCode == "" {
 		languageCode = "pt_BR"
 	}
@@ -215,7 +320,7 @@ func (c *metaClient) SendTemplate(ctx context.Context, phoneNumberID, to, templa
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"recipient_type":    "individual",
-		"to":                toDigits,
+		"to":                toFormatted,
 		"type":              "template",
 		"template":          templateData,
 	}

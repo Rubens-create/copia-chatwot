@@ -1,7 +1,11 @@
 package handler
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,26 +22,24 @@ func NewConversationHandler(convService service.ConversationService) *Conversati
 }
 
 func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
-	q := r.URL.Query()
-	accountID, _ := strconv.Atoi(q.Get("account_id"))
+	accountID, _, _ := parseConversationRoute(r.URL.Path)
 	if accountID == 0 {
-		accountID, _, _ = parseConversationRoute(r.URL.Path)
+		accountID, _ = strconv.Atoi(r.URL.Query().Get("account_id"))
 	}
-	inboxID, _ := strconv.Atoi(q.Get("inbox_id"))
-	limit, _ := strconv.Atoi(q.Get("limit"))
-	offset, _ := strconv.Atoi(q.Get("offset"))
+	if accountID == 0 {
+		accountID = 1
+	}
 
+	inboxID, _ := strconv.Atoi(r.URL.Query().Get("inbox_id"))
 	var statusPtr *int
-	if statusStr := q.Get("status"); statusStr != "" {
+	if statusStr := r.URL.Query().Get("status"); statusStr != "" {
 		if s, err := strconv.Atoi(statusStr); err == nil {
 			statusPtr = &s
 		}
 	}
+
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
 	conversations, err := h.convService.ListConversations(r.Context(), accountID, inboxID, statusPtr, limit, offset)
 	if err != nil {
@@ -52,15 +54,15 @@ func (h *ConversationHandler) ListConversations(w http.ResponseWriter, r *http.R
 }
 
 func (h *ConversationHandler) GetConversation(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
-
 	_, convID, _ := parseConversationRoute(r.URL.Path)
 	if convID <= 0 {
-		convID = extractIDFromPath(r.URL.Path, "/api/conversations/")
+		// Legacy path: /api/conversations/{id}
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+		if len(parts) >= 3 {
+			convID, _ = strconv.Atoi(parts[2])
+		}
 	}
+
 	if convID <= 0 {
 		http.Error(w, `{"error":"invalid conversation id"}`, http.StatusBadRequest)
 		return
@@ -115,9 +117,64 @@ func (h *ConversationHandler) HandleMessages(w http.ResponseWriter, r *http.Requ
 
 	case http.MethodPost:
 		var req service.SendMessageParams
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, `{"error":"invalid request payload: `+err.Error()+`"}`, http.StatusBadRequest)
-			return
+
+		ct := r.Header.Get("Content-Type")
+		if strings.HasPrefix(ct, "multipart/form-data") {
+			if err := r.ParseMultipartForm(32 << 20); err != nil {
+				http.Error(w, `{"error":"failed to parse multipart form: `+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
+			req.Content = r.FormValue("content")
+			if r.FormValue("private") == "true" {
+				req.Private = true
+			}
+
+			var fileHeaders []*multipart.FileHeader
+			if r.MultipartForm != nil && r.MultipartForm.File != nil {
+				for _, key := range []string{"attachments[]", "attachments", "file", "attachment", "files[]"} {
+					if fhs, ok := r.MultipartForm.File[key]; ok {
+						fileHeaders = append(fileHeaders, fhs...)
+					}
+				}
+			}
+
+			for _, fh := range fileHeaders {
+				f, err := fh.Open()
+				if err != nil {
+					continue
+				}
+				data, err := io.ReadAll(f)
+				f.Close()
+				if err != nil {
+					continue
+				}
+
+				mimeType := fh.Header.Get("Content-Type")
+				if mimeType == "" {
+					mimeType = http.DetectContentType(data)
+				}
+
+				fileType := 3 // document
+				if strings.HasPrefix(mimeType, "image/") {
+					fileType = 0
+				} else if strings.HasPrefix(mimeType, "audio/") {
+					fileType = 1
+				} else if strings.HasPrefix(mimeType, "video/") {
+					fileType = 2
+				}
+
+				dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(data))
+				req.Attachments = append(req.Attachments, service.AttachmentParam{
+					FileType:      fileType,
+					DataURL:       dataURL,
+					FallbackTitle: fh.Filename,
+				})
+			}
+		} else {
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, `{"error":"invalid request payload: `+err.Error()+`"}`, http.StatusBadRequest)
+				return
+			}
 		}
 
 		// Validation: at least content, attachment or template must be present

@@ -83,8 +83,45 @@
 
             <!-- Chat Footer / Send Input -->
             <footer class="chat-footer">
+              <!-- Staged Attachment Preview (Image / Audio / File) -->
+              <div id="staged-attachment-container" class="staged-attachment-bar" style="display: none;">
+                <div class="staged-attachment-info" id="staged-attachment-info">
+                  <!-- Dynamic preview rendered via app.js -->
+                </div>
+                <button type="button" class="staged-remove-btn" onclick="clearStagedAttachment()" title="Remover anexo">
+                  <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor;"><path d="m13.414 12 4.95-4.95a1 1 0 0 0-1.414-1.414L12 10.586 7.05 5.636a1 1 0 0 0-1.414 1.414L10.586 12l-4.95 4.95a1 1 0 0 0 1.414 1.414L12 13.414l4.95 4.95a1 1 0 0 0 1.414-1.414L13.414 12Z"/></svg>
+                </button>
+              </div>
+
+              <!-- Audio Recording Active Bar -->
+              <div id="recording-bar" class="recording-bar" style="display: none;">
+                <div class="recording-indicator">
+                  <div class="recording-dot"></div>
+                  <span>Gravando áudio: <strong id="recording-timer">0:00</strong></span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button type="button" class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="cancelAudioRecording()">Cancelar</button>
+                  <button type="button" class="btn-primary" style="padding: 4px 12px; font-size: 12px;" onclick="finishAudioRecording()">Concluir</button>
+                </div>
+              </div>
+
+              <!-- Standard Message Form -->
               <form id="message-form" class="message-input-form">
+                <!-- Hidden file input for images / audio / documents -->
+                <input type="file" id="media-file-input" accept="image/jpeg,image/png,image/webp,audio/ogg,audio/mpeg,audio/mp3,audio/wav,audio/m4a,video/mp4,application/pdf" style="display: none;" onchange="handleMediaFileSelect(event)">
+                
+                <!-- Attach Image/File button -->
+                <button type="button" class="composer-action-btn" onclick="document.getElementById('media-file-input').click()" title="Anexar Imagem ou Arquivo">
+                  <svg viewBox="0 0 24 24"><path d="M11.53 2.47a5.5 5.5 0 0 1 7.78 7.78l-7.78 7.78a3.5 3.5 0 0 1-4.95-4.95l7.07-7.07a.75.75 0 0 1 1.06 1.06l-7.07 7.07a2 2 0 1 0 2.83 2.83l7.78-7.78a4 4 0 1 0-5.66-5.66l-8.48 8.49a5.5 5.5 0 0 0 7.78 7.78l8.48-8.49a.75.75 0 1 1 1.06 1.06l-8.48 8.49a7 7 0 0 1-9.9-9.9l8.48-8.49a5.5 5.5 0 0 1 1.08-.86Z"/></svg>
+                </button>
+
+                <!-- Voice Message Record button -->
+                <button type="button" id="record-audio-btn" class="composer-action-btn" onclick="toggleAudioRecording()" title="Gravar Mensagem de Voz">
+                  <svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Zm-1.5 3a1.5 1.5 0 0 1 3 0v6a1.5 1.5 0 0 1-3 0V5ZM5.75 10a.75.75 0 0 1 .75.75 5.5 5.5 0 0 0 11 0 .75.75 0 0 1 1.5 0 7 7 0 0 1-6.25 6.945v2.305h2a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1 0-1.5h2v-2.305A7 7 0 0 1 5 10.75a.75.75 0 0 1 .75-.75Z"/></svg>
+                </button>
+
                 <textarea id="message-input" placeholder="Escreva uma mensagem... (Enter para enviar)" rows="1"></textarea>
+                
                 <button type="submit" id="send-btn" class="send-btn" title="Enviar Mensagem">
                   <svg viewBox="0 0 24 24"><path d="M5.694 12 2.299 3.272c-.236-.607.356-1.188.942-.982l.093.04 18 9a.75.75 0 0 1 .097 1.283l-.097.058-18 9c-.583.291-1.217-.244-1.065-.847l.03-.096L5.694 12 2.299 3.272 5.694 12ZM4.402 4.54l2.61 6.71h6.627a.75.75 0 0 1 .743.648l.007.102a.75.75 0 0 1-.649.743l-.101.007H7.01l-2.609 6.71L19.322 12 4.401 4.54Z"/></svg>
                 </button>

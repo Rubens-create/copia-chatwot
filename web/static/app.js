@@ -265,20 +265,40 @@ async function loadMessages(convId, isBackground = false) {
   }
 }
 
+let stagedAttachment = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimerInterval = null;
+let recordingSeconds = 0;
+
 function renderAttachment(att) {
+  const url = att.data_url || att.external_url || '';
   switch (att.file_type) {
     case 0: // Image
       return `
-        <div class="attachment-preview">
-          ${ICONS.image}
-          <img src="${escapeHtml(att.external_url)}" style="max-width:220px; border-radius:6px; margin-top:4px;" alt="Imagem" onerror="this.outerHTML='<span>Imagem anexada</span>'">
+        <div class="attachment-preview" style="background:transparent; padding:0; margin-top:6px;">
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapeHtml(url)}" style="max-width:280px; max-height:280px; object-fit:contain; border-radius:8px; display:block; border:1px solid rgba(0,0,0,0.08);" alt="Imagem" onerror="this.outerHTML='<span style=\\'display:flex;align-items:center;gap:6px;\\'>${ICONS.image} Imagem recebida</span>'">
+          </a>
         </div>`;
     case 1: // Audio
-      return `<div class="attachment-preview">${ICONS.audio} <span>Mensagem de voz</span></div>`;
+      return `
+        <div class="attachment-preview" style="background:transparent; padding:4px 0; margin-top:4px;">
+          <audio controls src="${escapeHtml(url)}" style="max-width:260px; height:38px; outline:none; border-radius:20px;"></audio>
+        </div>`;
     case 2: // Video
-      return `<div class="attachment-preview">${ICONS.video} <span>Vídeo anexado</span></div>`;
-    case 3: // File
-      return `<div class="attachment-preview">${ICONS.document} <span>${escapeHtml(att.fallback_title || 'Documento')}</span></div>`;
+      return `
+        <div class="attachment-preview" style="background:transparent; padding:0; margin-top:6px;">
+          <video controls src="${escapeHtml(url)}" style="max-width:280px; border-radius:8px; display:block;"></video>
+        </div>`;
+    case 3: // File / Document
+      return `
+        <div class="attachment-preview">
+          ${ICONS.document}
+          <a href="${escapeHtml(url)}" target="_blank" download="${escapeHtml(att.fallback_title || 'documento')}" style="color:inherit; text-decoration:underline; word-break:break-all;">
+            ${escapeHtml(att.fallback_title || 'Documento')}
+          </a>
+        </div>`;
     case 4: // Location
       return `<div class="attachment-preview">${ICONS.location} <span>Localização (${att.coordinates_lat}, ${att.coordinates_long})</span></div>`;
     case 7: // Contact
@@ -288,30 +308,201 @@ function renderAttachment(att) {
   }
 }
 
-// Send Message
+// Media File Input Handler (Image, Audio, Documents)
+function handleMediaFileSelect(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const dataUrl = evt.target.result;
+    let fileType = 3; // document
+    if (file.type.startsWith('image/')) fileType = 0;
+    else if (file.type.startsWith('audio/')) fileType = 1;
+    else if (file.type.startsWith('video/')) fileType = 2;
+
+    stagedAttachment = {
+      file_type: fileType,
+      data_url: dataUrl,
+      fallback_title: file.name
+    };
+
+    renderStagedAttachment();
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderStagedAttachment() {
+  const container = document.getElementById('staged-attachment-container');
+  const info = document.getElementById('staged-attachment-info');
+  if (!container || !info) return;
+
+  if (!stagedAttachment) {
+    container.style.display = 'none';
+    info.innerHTML = '';
+    return;
+  }
+
+  container.style.display = 'flex';
+  if (stagedAttachment.file_type === 0) {
+    info.innerHTML = `
+      <img src="${stagedAttachment.data_url}" class="staged-attachment-preview-img" alt="Preview">
+      <span><strong>Imagem:</strong> ${escapeHtml(stagedAttachment.fallback_title || 'foto')}</span>
+    `;
+  } else if (stagedAttachment.file_type === 1) {
+    info.innerHTML = `
+      ${ICONS.audio}
+      <span><strong>Áudio:</strong> ${escapeHtml(stagedAttachment.fallback_title || 'audio.ogg')}</span>
+    `;
+  } else if (stagedAttachment.file_type === 2) {
+    info.innerHTML = `
+      ${ICONS.video}
+      <span><strong>Vídeo:</strong> ${escapeHtml(stagedAttachment.fallback_title || 'video.mp4')}</span>
+    `;
+  } else {
+    info.innerHTML = `
+      ${ICONS.document}
+      <span><strong>Arquivo:</strong> ${escapeHtml(stagedAttachment.fallback_title || 'arquivo')}</span>
+    `;
+  }
+}
+
+function clearStagedAttachment() {
+  stagedAttachment = null;
+  const fileInput = document.getElementById('media-file-input');
+  if (fileInput) fileInput.value = '';
+  renderStagedAttachment();
+}
+
+async function toggleAudioRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    finishAudioRecording();
+  } else {
+    startAudioRecording();
+  }
+}
+
+async function startAudioRecording() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    recordingSeconds = 0;
+
+    let options = { mimeType: 'audio/webm;codecs=opus' };
+    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+      options = { mimeType: 'audio/ogg;codecs=opus' };
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options = {};
+      }
+    }
+
+    mediaRecorder = new MediaRecorder(stream, options);
+    mediaRecorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(track => track.stop());
+      if (audioChunks.length > 0) {
+        const mimeType = mediaRecorder.mimeType || 'audio/ogg';
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          stagedAttachment = {
+            file_type: 1, // audio
+            data_url: reader.result,
+            fallback_title: `audio_gravado_${Date.now()}.${mimeType.includes('webm') ? 'webm' : 'ogg'}`
+          };
+          renderStagedAttachment();
+        };
+        reader.readAsDataURL(audioBlob);
+      }
+    };
+
+    mediaRecorder.start();
+
+    const form = document.getElementById('message-form');
+    const recBar = document.getElementById('recording-bar');
+    const timer = document.getElementById('recording-timer');
+    if (form) form.style.display = 'none';
+    if (recBar) recBar.style.display = 'flex';
+    if (timer) timer.textContent = '0:00';
+
+    clearInterval(recordingTimerInterval);
+    recordingTimerInterval = setInterval(() => {
+      recordingSeconds++;
+      const mins = Math.floor(recordingSeconds / 60);
+      const secs = recordingSeconds % 60;
+      if (timer) {
+        timer.textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+      }
+    }, 1000);
+  } catch (err) {
+    console.error('Microphone access denied or error:', err);
+    alert('Não foi possível acessar o microfone para gravação de áudio.');
+  }
+}
+
+function finishAudioRecording() {
+  clearInterval(recordingTimerInterval);
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  const form = document.getElementById('message-form');
+  const recBar = document.getElementById('recording-bar');
+  if (form) form.style.display = 'flex';
+  if (recBar) recBar.style.display = 'none';
+}
+
+function cancelAudioRecording() {
+  clearInterval(recordingTimerInterval);
+  audioChunks = [];
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  const form = document.getElementById('message-form');
+  const recBar = document.getElementById('recording-bar');
+  if (form) form.style.display = 'flex';
+  if (recBar) recBar.style.display = 'none';
+}
+
+// Send Message (Text, Image, Audio, Document)
 async function handleSendMessage(e) {
   e.preventDefault();
   if (!currentConversationId) return;
 
   const input = document.getElementById('message-input');
   const text = input.value.trim();
-  if (!text) return;
+  const hasAttachment = stagedAttachment !== null;
+
+  if (!text && !hasAttachment) return;
+
+  const payload = {
+    content: text
+  };
+
+  if (hasAttachment) {
+    payload.attachments = [stagedAttachment];
+  }
 
   input.value = '';
+  clearStagedAttachment();
   input.focus();
 
   try {
     const res = await authFetch(`/api/conversations/${currentConversationId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: text })
+      body: JSON.stringify(payload)
     });
 
     if (res.ok) {
       await loadMessages(currentConversationId);
       await loadConversations(true);
     } else {
-      const err = await res.json();
+      const err = await res.json().catch(() => ({}));
       alert('Erro ao enviar mensagem: ' + (err.error || 'Desconhecido'));
     }
   } catch (err) {

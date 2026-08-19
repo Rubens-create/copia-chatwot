@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/chatwoot-lite/whatsapp-gateway/internal/config"
@@ -184,30 +186,66 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 		}
 		contentAttributes, _ = json.Marshal(attrMap)
 	} else if len(params.Attachments) > 0 {
-		// 2. Attachments / Media Message Handling
+		// 2. Attachments / Media Message Handling (Image, Audio, Video, Document, Location)
 		firstAtt := params.Attachments[0]
-		url := firstAtt.ExternalURL
-		if url == "" {
-			url = firstAtt.DataURL
+		mediaTarget := firstAtt.ExternalURL
+
+		// If Data URL (base64) provided, upload to Meta Media API first
+		if strings.HasPrefix(firstAtt.DataURL, "data:") {
+			mimeType, rawBytes, err := parseDataURL(firstAtt.DataURL)
+			if err == nil && len(rawBytes) > 0 {
+				filename := firstAtt.FallbackTitle
+				if filename == "" {
+					ext := "bin"
+					if strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg") {
+						ext = "jpg"
+					} else if strings.Contains(mimeType, "png") {
+						ext = "png"
+					} else if strings.Contains(mimeType, "ogg") {
+						ext = "ogg"
+					} else if strings.Contains(mimeType, "mp3") || strings.Contains(mimeType, "mpeg") {
+						ext = "mp3"
+					} else if strings.Contains(mimeType, "mp4") {
+						ext = "mp4"
+					} else if strings.Contains(mimeType, "pdf") {
+						ext = "pdf"
+					}
+					filename = fmt.Sprintf("upload_%d.%s", time.Now().Unix(), ext)
+				}
+
+				if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" {
+					mediaID, uploadErr := s.waClient.UploadMedia(ctx, phoneID, filename, mimeType, rawBytes)
+					if uploadErr != nil {
+						metaErr = uploadErr
+						log.Printf("[ConversationService] Meta API UploadMedia failed: %v", uploadErr)
+					} else {
+						mediaTarget = mediaID
+					}
+				}
+			} else if err != nil {
+				log.Printf("[ConversationService] Warning: Failed to parse Data URL: %v", err)
+			}
+		} else if mediaTarget == "" {
+			mediaTarget = firstAtt.DataURL
 		}
 
-		if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" && url != "" {
+		if s.waClient != nil && s.cfg.MetaAccessToken != "" && phoneID != "default" && mediaTarget != "" && metaErr == nil {
 			var resp *whatsapp.SendMessageResponse
 			var sendErr error
 
 			switch firstAtt.FileType {
 			case 0: // Image
-				resp, sendErr = s.waClient.SendImage(ctx, phoneID, contact.PhoneNumber, url, params.Content)
+				resp, sendErr = s.waClient.SendImage(ctx, phoneID, contact.PhoneNumber, mediaTarget, params.Content)
 			case 1: // Audio
-				resp, sendErr = s.waClient.SendAudio(ctx, phoneID, contact.PhoneNumber, url)
+				resp, sendErr = s.waClient.SendAudio(ctx, phoneID, contact.PhoneNumber, mediaTarget)
 			case 2: // Video
-				resp, sendErr = s.waClient.SendVideo(ctx, phoneID, contact.PhoneNumber, url, params.Content)
+				resp, sendErr = s.waClient.SendVideo(ctx, phoneID, contact.PhoneNumber, mediaTarget, params.Content)
 			case 3: // File/Document
-				resp, sendErr = s.waClient.SendDocument(ctx, phoneID, contact.PhoneNumber, url, firstAtt.FallbackTitle, params.Content)
+				resp, sendErr = s.waClient.SendDocument(ctx, phoneID, contact.PhoneNumber, mediaTarget, firstAtt.FallbackTitle, params.Content)
 			case 4: // Location
 				resp, sendErr = s.waClient.SendLocation(ctx, phoneID, contact.PhoneNumber, firstAtt.CoordinatesLat, firstAtt.CoordinatesLong, firstAtt.FallbackTitle, "")
 			default:
-				resp, sendErr = s.waClient.SendDocument(ctx, phoneID, contact.PhoneNumber, url, firstAtt.FallbackTitle, params.Content)
+				resp, sendErr = s.waClient.SendDocument(ctx, phoneID, contact.PhoneNumber, mediaTarget, firstAtt.FallbackTitle, params.Content)
 			}
 
 			if sendErr != nil {
@@ -352,4 +390,27 @@ func (s *conversationService) SendMessage(ctx context.Context, conversationID in
 	_ = s.queue.Enqueue(ctx, queue.QueueIncomingMessages, job)
 
 	return created, nil
+}
+
+func parseDataURL(dataURL string) (mimeType string, data []byte, err error) {
+	parts := strings.SplitN(dataURL, ",", 2)
+	if len(parts) != 2 {
+		return "", nil, fmt.Errorf("invalid data url format")
+	}
+
+	header := parts[0]
+	rawBase64 := parts[1]
+
+	header = strings.TrimPrefix(header, "data:")
+	headerParts := strings.Split(header, ";")
+	if len(headerParts) > 0 {
+		mimeType = headerParts[0]
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(rawBase64)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to decode base64 data: %w", err)
+	}
+
+	return mimeType, decoded, nil
 }
