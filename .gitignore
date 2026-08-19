@@ -1,0 +1,27 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+api
+worker
+
+# Test binary, generated with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Env files
+.env
+
+# Temporary artifacts
+*.log
+chatwoot_schema.rb
+install_go.ps1

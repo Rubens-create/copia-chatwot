@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatwoot Lite - WhatsApp Gateway</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Left Navigation Sidebar -->
+    <aside class="nav-sidebar">
+      <div class="nav-brand">
+        <div class="brand-logo" title="Chatwoot Lite">C</div>
+      </div>
+      <nav class="nav-links">
+        <button id="tab-convs-btn" class="nav-btn active" title="Conversas">
+          <svg viewBox="0 0 24 24"><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10a9.96 9.96 0 0 1-4.587-1.112l-3.826 1.067a1.25 1.25 0 0 1-1.54-1.54l1.068-3.823A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2Zm0 1.5A8.5 8.5 0 0 0 3.5 12c0 1.47.373 2.883 1.073 4.137l.15.27-1.112 3.984 3.987-1.112.27.15A8.5 8.5 0 1 0 12 3.5ZM8.75 13h4.498a.75.75 0 0 1 .102 1.493l-.102.007H8.75a.75.75 0 0 1-.102-1.493L8.75 13h4.498H8.75Zm0-3.5h6.505a.75.75 0 0 1 .101 1.493l-.101.007H8.75a.75.75 0 0 1-.102-1.493L8.75 9.5h6.505H8.75Z"/></svg>
+        </button>
+        <button id="tab-webhooks-btn" class="nav-btn" title="Configurações & Webhooks">
+          <svg viewBox="0 0 24 24"><path d="M12.012 2.25c.734.008 1.465.093 2.182.253a.75.75 0 0 1 .582.649l.17 1.527a1.384 1.384 0 0 0 1.927 1.116l1.4-.615a.75.75 0 0 1 .85.174a9.8 9.8 0 0 1 2.205 3.792a.75.75 0 0 1-.272.825l-1.241.916a1.38 1.38 0 0 0 0 2.226l1.243.915a.75.75 0 0 1 .272.826a9.8 9.8 0 0 1-2.204 3.792a.75.75 0 0 1-.849.175l-1.406-.617a1.38 1.38 0 0 0-1.926 1.114l-.17 1.526a.75.75 0 0 1-.571.647a9.5 9.5 0 0 1-4.406 0a.75.75 0 0 1-.572-.647l-.169-1.524a1.382 1.382 0 0 0-1.925-1.11l-1.406.616a.75.75 0 0 1-.85-.175a9.8 9.8 0 0 1-2.203-3.796a.75.75 0 0 1 .272-.826l1.243-.916a1.38 1.38 0 0 0 0-2.226l-1.243-.914a.75.75 0 0 1-.272-.826a9.8 9.8 0 0 1 2.205-3.792a.75.75 0 0 1 .85-.174l1.4.615a1.387 1.387 0 0 0 1.93-1.118l.17-1.526a.75.75 0 0 1 .583-.65q1.074-.238 2.201-.252M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6"/></svg>
+        </button>
+      </nav>
+      <div class="nav-footer">
+        <div id="system-status-dot" class="status-indicator" title="Sistema Operacional"></div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-layout">
+      <!-- Conversas View -->
+      <section id="view-conversations" class="view-panel active">
+        <!-- Conversation List Sidebar -->
+        <div class="conversations-sidebar">
+          <div class="sidebar-header">
+            <h2>Conversas</h2>
+            <div class="search-box">
+              <svg viewBox="0 0 24 24"><path d="M10 2.75a7.25 7.25 0 0 1 5.63 11.819l4.9 4.9a.75.75 0 0 1-.976 1.134l-.084-.073-4.901-4.9A7.25 7.25 0 1 1 10 2.75Zm0 1.5a5.75 5.75 0 1 0 0 11.5 5.75 5.75 0 0 0 0-11.5Z"/></svg>
+              <input type="text" id="conv-search" placeholder="Buscar conversas...">
+            </div>
+          </div>
+          <div class="conversations-list" id="conversations-list">
+            <div class="loading-state">Carregando conversas...</div>
+          </div>
+        </div>
+
+        <!-- Chat Area -->
+        <div class="chat-area" id="chat-area">
+          <div class="empty-chat" id="empty-chat-state">
+            <div class="empty-chat-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10a9.96 9.96 0 0 1-4.587-1.112l-3.826 1.067a1.25 1.25 0 0 1-1.54-1.54l1.068-3.823A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2Zm0 1.5A8.5 8.5 0 0 0 3.5 12c0 1.47.373 2.883 1.073 4.137l.15.27-1.112 3.984 3.987-1.112.27.15A8.5 8.5 0 1 0 12 3.5ZM8.75 13h4.498a.75.75 0 0 1 .102 1.493l-.102.007H8.75a.75.75 0 0 1-.102-1.493L8.75 13h4.498H8.75Zm0-3.5h6.505a.75.75 0 0 1 .101 1.493l-.101.007H8.75a.75.75 0 0 1-.102-1.493L8.75 9.5h6.505H8.75Z"/></svg>
+            </div>
+            <h3>Selecione uma conversa</h3>
+            <p>Escolha um contato na lista para visualizar as mensagens e responder.</p>
+          </div>
+
+          <div class="active-chat hidden" id="active-chat-container">
+            <!-- Chat Header -->
+            <header class="chat-header">
+              <div class="chat-header-info">
+                <div class="avatar" id="current-avatar">CW</div>
+                <div>
+                  <h3 id="current-contact-name">Nome do Contato</h3>
+                  <span id="current-contact-phone" class="phone-subtitle">+55 00 0000-0000</span>
+                </div>
+              </div>
+              <div class="chat-header-actions">
+                <span class="badge-status open" id="current-conv-status">Aberta</span>
+                <span class="badge-channel">
+                  <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 1.55c-2.3.4-4.2 2.3-4.6 4.95h3.6V3.55H11Zm2 0v4.95h3.6c-.4-2.65-2.3-4.55-4.6-4.95h1Zm-3 6.45H6.2c-.15.65-.2 1.32-.2 2s.05 1.35.2 2H10v-4Zm2 0v4h3.8c.15-.65.2-1.32.2-2s-.05-1.35-.2-2H12Zm-2 5.5H6.4c.4 2.65 2.3 4.55 4.6 4.95v-4.95h-1Zm2 0v4.95c2.3-.4 4.2-2.3 4.6-4.95H12Z"/></svg>
+                  WhatsApp Cloud API
+                </span>
+              </div>
+            </header>
+
+            <!-- Messages Feed -->
+            <div class="messages-container" id="messages-container">
+              <!-- Dynamic Messages rendered via app.js -->
+            </div>
+
+            <!-- Chat Footer / Send Input -->
+            <footer class="chat-footer">
+              <form id="message-form" class="message-input-form">
+                <textarea id="message-input" placeholder="Escreva uma mensagem... (Enter para enviar)" rows="1"></textarea>
+                <button type="submit" id="send-btn" class="send-btn" title="Enviar Mensagem">
+                  <svg viewBox="0 0 24 24"><path d="M5.694 12 2.299 3.272c-.236-.607.356-1.188.942-.982l.093.04 18 9a.75.75 0 0 1 .097 1.283l-.097.058-18 9c-.583.291-1.217-.244-1.065-.847l.03-.096L5.694 12 2.299 3.272 5.694 12ZM4.402 4.54l2.61 6.71h6.627a.75.75 0 0 1 .743.648l.007.102a.75.75 0 0 1-.649.743l-.101.007H7.01l-2.609 6.71L19.322 12 4.401 4.54Z"/></svg>
+                </button>
+              </form>
+            </footer>
+          </div>
+        </div>
+      </section>
+
+      <!-- Webhooks & Config View -->
+      <section id="view-webhooks" class="view-panel">
+        <div class="config-container">
+          <header class="config-header">
+            <h2>Configurações & Webhooks Externos</h2>
+            <p>Gerencie endpoints HTTP que recebem eventos assíncronos das mensagens do WhatsApp.</p>
+          </header>
+
+          <!-- Meta WhatsApp Cloud API Callback Configuration Card -->
+          <div class="card meta-config-card">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div>
+                <h3>
+                  <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 1.55c-2.3.4-4.2 2.3-4.6 4.95h3.6V3.55H11Zm2 0v4.95h3.6c-.4-2.65-2.3-4.55-4.6-4.95h1Zm-3 6.45H6.2c-.15.65-.2 1.32-.2 2s.05 1.35.2 2H10v-4Zm2 0v4h3.8c.15-.65.2-1.32.2-2s-.05-1.35-.2-2H12Zm-2 5.5H6.4c.4 2.65 2.3 4.55 4.6 4.95v-4.95h-1Zm2 0v4.95c2.3-.4 4.2-2.3 4.6-4.95H12Z"/></svg>
+                  Configuração no Painel da Meta (WhatsApp Cloud API)
+                </h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
+                  Configure estes dados em <strong>Meta for Developers &rarr; WhatsApp &rarr; Configuração &rarr; Webhook</strong>
+                </p>
+              </div>
+              <span class="badge-channel">
+                <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.25 13.72-3.47-3.47a.75.75 0 1 1 1.06-1.06l2.41 2.41 5.72-5.72a.75.75 0 1 1 1.06 1.06l-6.25 6.25a.75.75 0 0 1-.53.53Z"/></svg>
+                Meta Cloud API
+              </span>
+            </div>
+
+            <div class="meta-grid">
+              <div class="meta-field-box">
+                <label>URL de Retorno de Chamada (Callback URL)</label>
+                <div class="meta-input-group">
+                  <input type="text" id="meta-callback-url" readonly value="http://localhost:8080/webhooks/whatsapp">
+                  <button type="button" class="btn-secondary" onclick="copyField('meta-callback-url')">
+                    <svg viewBox="0 0 24 24"><path d="M7.5 2A2.5 2.5 0 0 0 5 4.5v11A2.5 2.5 0 0 0 7.5 18h9a2.5 2.5 0 0 0 2.5-2.5v-11A2.5 2.5 0 0 0 16.5 2h-9ZM6.5 4.5A1 1 0 0 1 7.5 3.5h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-11ZM4 6.5A1.5 1.5 0 0 0 2.5 8v11A2.5 2.5 0 0 0 5 21.5h10a1.5 1.5 0 0 0 1.5-1.5v-.5h-10A1.5 1.5 0 0 1 5 18V6.5h-1Z"/></svg>
+                    Copiar
+                  </button>
+                </div>
+                <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Em produção, use seu domínio público <code>https://seudominio.com/webhooks/whatsapp</code>.</small>
+              </div>
+
+              <div class="meta-field-box">
+                <label>Token de Verificação (Verify Token)</label>
+                <div class="meta-input-group">
+                  <input type="text" id="meta-verify-token" readonly value="whatsapp_gateway_verify_token">
+                  <button type="button" class="btn-secondary" onclick="copyField('meta-verify-token')">
+                    <svg viewBox="0 0 24 24"><path d="M7.5 2A2.5 2.5 0 0 0 5 4.5v11A2.5 2.5 0 0 0 7.5 18h9a2.5 2.5 0 0 0 2.5-2.5v-11A2.5 2.5 0 0 0 16.5 2h-9ZM6.5 4.5A1 1 0 0 1 7.5 3.5h9a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-11ZM4 6.5A1.5 1.5 0 0 0 2.5 8v11A2.5 2.5 0 0 0 5 21.5h10a1.5 1.5 0 0 0 1.5-1.5v-.5h-10A1.5 1.5 0 0 1 5 18V6.5h-1Z"/></svg>
+                    Copiar
+                  </button>
+                </div>
+                <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Configurado via variável de ambiente <code>META_VERIFY_TOKEN</code>.</small>
+              </div>
+            </div>
+
+            <div class="meta-tip-box">
+              <div>
+                <strong>Campo para assinar na Meta:</strong>
+                <code style="margin-left: 6px; font-weight: 600; color: var(--primary);">messages</code>
+              </div>
+              <div style="color: var(--text-muted); font-size: 12px;">
+                Túnel de teste local: <code>ngrok http 8080</code>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-grid">
+            <!-- System Health Card -->
+            <div class="card health-card">
+              <h3>
+                <svg viewBox="0 0 24 24"><path d="M12.012 2.25c.734.008 1.465.093 2.182.253a.75.75 0 0 1 .582.649l.17 1.527a1.384 1.384 0 0 0 1.927 1.116l1.4-.615a.75.75 0 0 1 .85.174a9.8 9.8 0 0 1 2.205 3.792a.75.75 0 0 1-.272.825l-1.241.916a1.38 1.38 0 0 0 0 2.226l1.243.915a.75.75 0 0 1 .272.826a9.8 9.8 0 0 1-2.204 3.792a.75.75 0 0 1-.849.175l-1.406-.617a1.38 1.38 0 0 0-1.926 1.114l-.17 1.526a.75.75 0 0 1-.571.647a9.5 9.5 0 0 1-4.406 0a.75.75 0 0 1-.572-.647l-.169-1.524a1.382 1.382 0 0 0-1.925-1.11l-1.406.616a.75.75 0 0 1-.85-.175a9.8 9.8 0 0 1-2.203-3.796a.75.75 0 0 1 .272-.826l1.243-.916a1.38 1.38 0 0 0 0-2.226l-1.243-.914a.75.75 0 0 1-.272-.826a9.8 9.8 0 0 1 2.205-3.792a.75.75 0 0 1 .85-.174l1.4.615a1.387 1.387 0 0 0 1.93-1.118l.17-1.526a.75.75 0 0 1 .583-.65q1.074-.238 2.201-.252M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6"/></svg>
+                Status da Infraestrutura
+              </h3>
+              <div class="health-metrics" id="health-metrics">
+                <div class="metric-row">
+                  <span>PostgreSQL (Chatwoot DB):</span>
+                  <strong id="health-postgres">Verificando...</strong>
+                </div>
+                <div class="metric-row">
+                  <span>Redis (Queue/Workers):</span>
+                  <strong id="health-redis">Verificando...</strong>
+                </div>
+                <div class="metric-row">
+                  <span>WhatsApp Endpoint:</span>
+                  <code>/webhooks/whatsapp</code>
+                </div>
+              </div>
+            </div>
+
+            <!-- New Webhook Form Card -->
+            <div class="card webhook-form-card">
+              <h3>
+                <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 5a1 1 0 1 0-2 0v4H7a1 1 0 1 0 0 2h4v4a1 1 0 1 0 2 0v-4h4a1 1 0 1 0 0-2h-4V7Z"/></svg>
+                Cadastrar Webhook Externo
+              </h3>
+              <form id="new-webhook-form">
+                <div class="form-group">
+                  <label for="wh-name">Nome da Aplicação</label>
+                  <input type="text" id="wh-name" placeholder="Ex: CRM / Bot de Atendimento" required>
+                </div>
+                <div class="form-group">
+                  <label for="wh-url">URL de Destino (POST)</label>
+                  <input type="url" id="wh-url" placeholder="https://meusistema.com/api/webhook" required>
+                </div>
+                <div class="form-group">
+                  <label for="wh-secret">Secret (Assinatura HMAC-SHA256)</label>
+                  <input type="text" id="wh-secret" placeholder="segredo_de_assinatura_opcional">
+                </div>
+                <button type="submit" class="primary-btn">Salvar Webhook</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Webhooks List Card -->
+          <div class="card webhooks-list-card">
+            <h3>
+              <svg viewBox="0 0 24 24"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3h13A1.5 1.5 0 0 1 20 4.5v15a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5v-15ZM5.5 4.5v15h13v-15h-13ZM7 7.75A.75.75 0 0 1 7.75 7h8.5a.75.75 0 0 1 0 1.5h-8.5A.75.75 0 0 1 7 7.75Zm0 4a.75.75 0 0 1 .75-.75h8.5a.75.75 0 0 1 0 1.5h-8.5a.75.75 0 0 1-.75-.75Zm0 4a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5h-5.5a.75.75 0 0 1-.75-.75Z"/></svg>
+              Webhooks Registrados
+            </h3>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>URL</th>
+                    <th>Assinaturas</th>
+                    <th>Criado em</th>
+                  </tr>
+                </thead>
+                <tbody id="webhooks-table-body">
+                  <tr><td colspan="4" class="text-center">Carregando webhooks...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

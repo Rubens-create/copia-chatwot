@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chatwoot_lite_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatwoot_development
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./migrations/001_chatwoot_whatsapp_schema.sql:/docker-entrypoint-initdb.d/001_chatwoot_whatsapp_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chatwoot_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chatwoot_lite_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatwoot_lite_api
+    restart: unless-stopped
+    command: /app/api
+    ports:
+      - "8080:8080"
+    environment:
+      APP_PORT: "8080"
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/chatwoot_development?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      META_VERIFY_TOKEN: "${META_VERIFY_TOKEN:-whatsapp_gateway_verify_token}"
+      META_APP_SECRET: "${META_APP_SECRET:-}"
+      META_ACCESS_TOKEN: "${META_ACCESS_TOKEN:-}"
+      META_API_VERSION: "${META_API_VERSION:-v19.0}"
+      DEFAULT_ACCOUNT_ID: "1"
+      DEFAULT_INBOX_ID: "1"
+      LOG_LEVEL: "info"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chatwoot_lite_worker
+    restart: unless-stopped
+    command: /app/worker
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/chatwoot_development?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+      DEFAULT_ACCOUNT_ID: "1"
+      DEFAULT_INBOX_ID: "1"
+      WORKER_CONCURRENCY: "5"
+      LOG_LEVEL: "info"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  redis_data:
