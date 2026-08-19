@@ -419,10 +419,10 @@ async function handleCreateWebhook(e) {
   }
 }
 
-// Load Meta Webhook Config
+// Load Meta Webhook & API Credentials Config
 async function loadMetaConfig() {
   try {
-    const res = await fetch('/api/config/meta-webhook');
+    const res = await fetch('/api/config/meta');
     if (!res.ok) return;
     const data = await res.json();
     if (data.webhook_url) {
@@ -431,11 +431,99 @@ async function loadMetaConfig() {
     if (data.verify_token) {
       document.getElementById('meta-verify-token').value = data.verify_token;
     }
+    if (data.phone_number_id) {
+      document.getElementById('meta-phone-number-id').value = data.phone_number_id;
+    }
+    if (data.access_token) {
+      document.getElementById('meta-access-token').value = data.access_token;
+    }
+    if (data.phone_number) {
+      document.getElementById('meta-phone-number').value = data.phone_number;
+    }
+    if (data.api_version) {
+      document.getElementById('meta-api-version').value = data.api_version;
+    }
     if (data.api_access_token) {
       apiAccessToken = data.api_access_token;
     }
+
+    const badge = document.getElementById('meta-status-badge');
+    if (badge) {
+      if (data.phone_number_id && data.access_token) {
+        badge.style.background = '#ECFDF5';
+        badge.style.color = '#059669';
+        badge.innerHTML = `${ICONS.checkCircle} Meta Cloud API (Conectada)`;
+      } else {
+        badge.style.background = '#FEF3C7';
+        badge.style.color = '#D97706';
+        badge.innerHTML = `${ICONS.alertCircle} Credenciais Pendentes`;
+      }
+    }
   } catch (err) {
     console.error('Failed to load meta config:', err);
+  }
+}
+
+// Save Meta Credentials
+async function saveMetaCredentials(event) {
+  if (event) event.preventDefault();
+  const phoneId = document.getElementById('meta-phone-number-id').value.trim();
+  const accessToken = document.getElementById('meta-access-token').value.trim();
+  const phoneNumber = document.getElementById('meta-phone-number').value.trim();
+  const apiVersion = document.getElementById('meta-api-version').value.trim() || 'v19.0';
+  const feedback = document.getElementById('meta-save-feedback');
+  const btn = document.getElementById('meta-save-btn');
+
+  if (!phoneId || !accessToken) {
+    if (feedback) {
+      feedback.style.color = '#EF4444';
+      feedback.textContent = 'Preencha o Phone Number ID e o Access Token.';
+    }
+    return;
+  }
+
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Salvando...';
+    }
+
+    const res = await authFetch('/api/config/meta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone_number_id: phoneId,
+        access_token: accessToken,
+        phone_number: phoneNumber,
+        api_version: apiVersion
+      })
+    });
+
+    if (res.ok) {
+      if (feedback) {
+        feedback.style.color = '#10B981';
+        feedback.textContent = '✓ Credenciais da Meta salvas com sucesso!';
+        setTimeout(() => { feedback.textContent = ''; }, 4000);
+      }
+      loadMetaConfig();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      if (feedback) {
+        feedback.style.color = '#EF4444';
+        feedback.textContent = 'Erro ao salvar: ' + (err.error || 'Falha na requisição');
+      }
+    }
+  } catch (err) {
+    console.error('Error saving meta credentials:', err);
+    if (feedback) {
+      feedback.style.color = '#EF4444';
+      feedback.textContent = 'Erro de conexão ao salvar credenciais.';
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: currentColor;"><path d="M4.53 12.97a.75.75 0 0 0-1.06 1.06l4.5 4.5a.75.75 0 0 0 1.06 0l11-11a.75.75 0 0 0-1.06-1.06L8.5 16.94l-3.97-3.97Z"/></svg> Salvar Credenciais da Meta`;
+    }
   }
 }
 

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -16,6 +17,8 @@ type AccountRepository interface {
 	FindInboxByID(ctx context.Context, id int) (*model.Inbox, error)
 	FindInboxByChannelID(ctx context.Context, channelID int) (*model.Inbox, error)
 	FindChannelByInboxID(ctx context.Context, inboxID int) (*model.ChannelWhatsapp, error)
+	GetDefaultChannelWhatsApp(ctx context.Context, accountID int) (*model.ChannelWhatsapp, error)
+	UpdateChannelWhatsAppConfig(ctx context.Context, accountID int, phoneNumber, phoneID, accessToken, apiVersion string) error
 }
 
 type accountRepository struct {
@@ -110,4 +113,57 @@ func (r *accountRepository) FindChannelByInboxID(ctx context.Context, inboxID in
 		return nil, fmt.Errorf("error finding channel_whatsapp by inbox_id: %w", err)
 	}
 	return &ch, nil
+}
+
+func (r *accountRepository) GetDefaultChannelWhatsApp(ctx context.Context, accountID int) (*model.ChannelWhatsapp, error) {
+	query := `
+		SELECT id, account_id, phone_number, provider, provider_config, business_management_token, created_at, updated_at
+		FROM channel_whatsapp
+		WHERE account_id = $1
+		ORDER BY id ASC
+		LIMIT 1
+	`
+	row := r.db.Pool.QueryRow(ctx, query, accountID)
+
+	var ch model.ChannelWhatsapp
+	err := row.Scan(&ch.ID, &ch.AccountID, &ch.PhoneNumber, &ch.Provider, &ch.ProviderConfig, &ch.BusinessManagementToken, &ch.CreatedAt, &ch.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error finding default channel_whatsapp: %w", err)
+	}
+	return &ch, nil
+}
+
+func (r *accountRepository) UpdateChannelWhatsAppConfig(ctx context.Context, accountID int, phoneNumber, phoneID, accessToken, apiVersion string) error {
+	pConfig, _ := json.Marshal(map[string]string{
+		"phone_number_id": phoneID,
+		"api_version":     apiVersion,
+	})
+
+	query := `
+		UPDATE channel_whatsapp
+		SET phone_number = CASE WHEN $2 <> '' THEN $2 ELSE phone_number END,
+		    provider_config = $3,
+		    business_management_token = CASE WHEN $4 <> '' THEN $4 ELSE business_management_token END,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE account_id = $1
+	`
+	tag, err := r.db.Pool.Exec(ctx, query, accountID, phoneNumber, pConfig, accessToken)
+	if err != nil {
+		return fmt.Errorf("failed to update channel_whatsapp: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		insertQuery := `
+			INSERT INTO channel_whatsapp (account_id, phone_number, provider, provider_config, business_management_token, created_at, updated_at)
+			VALUES ($1, COALESCE(NULLIF($2, ''), 'default'), 'default', $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		`
+		_, err = r.db.Pool.Exec(ctx, insertQuery, accountID, phoneNumber, pConfig, accessToken)
+		if err != nil {
+			return fmt.Errorf("failed to insert channel_whatsapp: %w", err)
+		}
+	}
+	return nil
 }

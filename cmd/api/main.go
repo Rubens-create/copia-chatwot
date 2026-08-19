@@ -89,14 +89,83 @@ func main() {
 	mux.HandleFunc("/webhook", metaHandler.HandleWebhook)
 	mux.HandleFunc("/webhooks/meta", metaHandler.HandleWebhook)
 
-	// Config Info API (for frontend to display exact Meta Webhook URL & Verify Token)
+	// Meta Configuration API (GET and POST for UI Settings & Webhook Callback info)
 	metaConfigHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
 		proto := "http"
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
 			proto = "https"
 		}
+
 		w.Header().Set("Content-Type", "application/json")
+
+		if r.Method == http.MethodPost {
+			var payload struct {
+				PhoneNumberID string `json:"phone_number_id"`
+				PhoneNumber   string `json:"phone_number"`
+				AccessToken   string `json:"access_token"`
+				AppSecret     string `json:"app_secret"`
+				VerifyToken   string `json:"verify_token"`
+				APIVersion    string `json:"api_version"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				http.Error(w, `{"error":"payload inválido"}`, http.StatusBadRequest)
+				return
+			}
+
+			// Update in PostgreSQL channel_whatsapp table
+			if err := accountRepo.UpdateChannelWhatsAppConfig(r.Context(), cfg.DefaultAccountID, payload.PhoneNumber, payload.PhoneNumberID, payload.AccessToken, payload.APIVersion); err != nil {
+				log.Printf("[API] Error updating channel_whatsapp config: %v", err)
+			}
+
+			// Update in-memory runtime configurations
+			if payload.PhoneNumberID != "" {
+				cfg.MetaPhoneNumberID = payload.PhoneNumberID
+			}
+			if payload.AccessToken != "" {
+				cfg.MetaAccessToken = payload.AccessToken
+			}
+			if payload.AppSecret != "" {
+				cfg.MetaAppSecret = payload.AppSecret
+			}
+			if payload.VerifyToken != "" {
+				cfg.MetaVerifyToken = payload.VerifyToken
+			}
+			if payload.APIVersion != "" {
+				cfg.MetaAPIVersion = payload.APIVersion
+			}
+			waClient.UpdateCredentials(cfg.MetaAccessToken, cfg.MetaAPIVersion)
+
+			log.Printf("[API] Meta WhatsApp credentials updated via Settings UI. PhoneID=%s, Version=%s", cfg.MetaPhoneNumberID, cfg.MetaAPIVersion)
+
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"status":  "ok",
+				"message": "Credenciais da Meta salvas com sucesso!",
+			})
+			return
+		}
+
+		// GET request: Return active Meta configs
+		phoneID := cfg.MetaPhoneNumberID
+		phoneNumber := ""
+		accessToken := cfg.MetaAccessToken
+
+		if ch, err := accountRepo.GetDefaultChannelWhatsApp(r.Context(), cfg.DefaultAccountID); err == nil && ch != nil {
+			if phoneNumber == "" {
+				phoneNumber = ch.PhoneNumber
+			}
+			if accessToken == "" && ch.BusinessManagementToken != nil {
+				accessToken = *ch.BusinessManagementToken
+			}
+			if phoneID == "" && len(ch.ProviderConfig) > 0 {
+				var pConfig map[string]interface{}
+				_ = json.Unmarshal(ch.ProviderConfig, &pConfig)
+				if pid, ok := pConfig["phone_number_id"].(string); ok && pid != "" {
+					phoneID = pid
+				}
+			}
+		}
+
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"webhook_url":      fmt.Sprintf("%s://%s/webhooks/whatsapp", proto, host),
 			"webhook_path":     "/webhooks/whatsapp",
@@ -104,8 +173,13 @@ func main() {
 			"api_access_token": cfg.APIAccessToken,
 			"required_fields":  []string{"messages"},
 			"api_version":      cfg.MetaAPIVersion,
+			"phone_number_id":  phoneID,
+			"phone_number":     phoneNumber,
+			"access_token":     accessToken,
+			"app_secret":       cfg.MetaAppSecret,
 		})
 	})
+	mux.Handle("/api/config/meta", metaConfigHandler)
 	mux.Handle("/api/config/meta-webhook", metaConfigHandler)
 
 	// Auth Middleware for protected API endpoints

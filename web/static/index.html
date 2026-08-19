@@ -102,25 +102,29 @@
             <p>Gerencie endpoints HTTP que recebem eventos assíncronos das mensagens do WhatsApp.</p>
           </header>
 
-          <!-- Meta WhatsApp Cloud API Callback Configuration Card -->
+          <!-- Meta WhatsApp Cloud API Callback & Credentials Configuration Card -->
           <div class="card meta-config-card">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
               <div>
                 <h3>
                   <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 1.55c-2.3.4-4.2 2.3-4.6 4.95h3.6V3.55H11Zm2 0v4.95h3.6c-.4-2.65-2.3-4.55-4.6-4.95h1Zm-3 6.45H6.2c-.15.65-.2 1.32-.2 2s.05 1.35.2 2H10v-4Zm2 0v4h3.8c.15-.65.2-1.32.2-2s-.05-1.35-.2-2H12Zm-2 5.5H6.4c.4 2.65 2.3 4.55 4.6 4.95v-4.95h-1Zm2 0v4.95c2.3-.4 4.2-2.3 4.6-4.95H12Z"/></svg>
-                  Configuração no Painel da Meta (WhatsApp Cloud API)
+                  Integração Meta WhatsApp Cloud API
                 </h3>
                 <p style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
-                  Configure estes dados em <strong>Meta for Developers &rarr; WhatsApp &rarr; Configuração &rarr; Webhook</strong>
+                  Configure os dados de recebimento (Webhook) e envio (Access Token & Phone Number ID) para habilitar o fluxo bidirecional.
                 </p>
               </div>
-              <span class="badge-channel">
+              <span id="meta-status-badge" class="badge-channel">
                 <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.25 13.72-3.47-3.47a.75.75 0 1 1 1.06-1.06l2.41 2.41 5.72-5.72a.75.75 0 1 1 1.06 1.06l-6.25 6.25a.75.75 0 0 1-.53.53Z"/></svg>
                 Meta Cloud API
               </span>
             </div>
 
-            <div class="meta-grid">
+            <!-- 1. Recebimento (Webhook da Meta) -->
+            <div style="font-weight: 600; font-size: 13px; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+              <span>1. Configuração do Webhook na Meta (Recebimento de Mensagens)</span>
+            </div>
+            <div class="meta-grid" style="margin-bottom: 16px;">
               <div class="meta-field-box">
                 <label>URL de Retorno de Chamada (Callback URL)</label>
                 <div class="meta-input-group">
@@ -130,7 +134,7 @@
                     Copiar
                   </button>
                 </div>
-                <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Em produção, use seu domínio público <code>https://seudominio.com/webhooks/whatsapp</code>.</small>
+                <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Cole no painel da Meta em WhatsApp &rarr; Configuração &rarr; Webhook.</small>
               </div>
 
               <div class="meta-field-box">
@@ -142,19 +146,55 @@
                     Copiar
                   </button>
                 </div>
-                <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Configurado via variável de ambiente <code>META_VERIFY_TOKEN</code>.</small>
+                <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Campo para assinar na Meta: <code>messages</code>.</small>
               </div>
             </div>
 
-            <div class="meta-tip-box">
-              <div>
-                <strong>Campo para assinar na Meta:</strong>
-                <code style="margin-left: 6px; font-weight: 600; color: var(--primary);">messages</code>
-              </div>
-              <div style="color: var(--text-muted); font-size: 12px;">
-                Túnel de teste local: <code>ngrok http 8080</code>
-              </div>
+            <hr style="border: 0; border-top: 1px solid var(--border-light); margin: 20px 0 16px 0;">
+
+            <!-- 2. Envio de Mensagens (Access Token & Phone Number ID) -->
+            <div style="font-weight: 600; font-size: 13px; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+              <span>2. Credenciais de Envio (Meta Access Token & Phone Number ID)</span>
+              <span style="font-size: 11.5px; font-weight: normal; color: var(--text-secondary);">Necessário para responder mensagens e disparar ativas</span>
             </div>
+
+            <form id="meta-credentials-form" onsubmit="saveMetaCredentials(event)">
+              <div class="meta-grid" style="margin-bottom: 14px;">
+                <div class="meta-field-box">
+                  <label for="meta-phone-number-id">Identificador do Número de Telefone (Phone Number ID) *</label>
+                  <input type="text" id="meta-phone-number-id" placeholder="ex: 106540352242922" required>
+                  <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Encontrado em Meta for Developers &rarr; WhatsApp &rarr; Início da API.</small>
+                </div>
+
+                <div class="meta-field-box">
+                  <label for="meta-access-token">Token de Acesso da Meta (Access Token) *</label>
+                  <input type="password" id="meta-access-token" placeholder="ex: EAAG..." required>
+                  <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Token permanente com permissão <code>whatsapp_business_messaging</code>.</small>
+                </div>
+              </div>
+
+              <div class="meta-grid" style="margin-bottom: 16px;">
+                <div class="meta-field-box">
+                  <label for="meta-phone-number">Número Comercial de Exibição (Opcional)</label>
+                  <input type="text" id="meta-phone-number" placeholder="ex: +5511999998888">
+                  <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Número associado à conta do WhatsApp Business.</small>
+                </div>
+
+                <div class="meta-field-box">
+                  <label for="meta-api-version">Versão da Graph API</label>
+                  <input type="text" id="meta-api-version" value="v19.0" placeholder="v19.0">
+                  <small style="color:var(--text-muted); display:block; margin-top:4px; font-size: 11.5px;">Versão utilizada nas requisições da Meta (padrão: v19.0).</small>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; align-items: center; gap: 12px;">
+                <span id="meta-save-feedback" style="font-size: 12px; font-weight: 500;"></span>
+                <button type="submit" id="meta-save-btn" class="btn-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px;">
+                  <svg viewBox="0 0 24 24" style="width: 16px; height: 16px; fill: currentColor;"><path d="M4.53 12.97a.75.75 0 0 0-1.06 1.06l4.5 4.5a.75.75 0 0 0 1.06 0l11-11a.75.75 0 0 0-1.06-1.06L8.5 16.94l-3.97-3.97Z"/></svg>
+                  Salvar Credenciais da Meta
+                </button>
+              </div>
+            </form>
           </div>
 
           <div class="config-grid">

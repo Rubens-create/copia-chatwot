@@ -30,6 +30,7 @@ type WhatsAppClient interface {
 	SendDocument(ctx context.Context, phoneNumberID, to, docURL, filename, caption string) (*SendMessageResponse, error)
 	SendLocation(ctx context.Context, phoneNumberID, to string, lat, long float64, name, address string) (*SendMessageResponse, error)
 	SendTemplate(ctx context.Context, phoneNumberID, to, templateName, languageCode string, components []interface{}) (*SendMessageResponse, error)
+	UpdateCredentials(accessToken, apiVersion string)
 }
 
 type metaClient struct {
@@ -48,6 +49,15 @@ func NewClient(accessToken, apiVersion string) WhatsAppClient {
 		httpClient: &http.Client{
 			Timeout: 15 * time.Second,
 		},
+	}
+}
+
+func (c *metaClient) UpdateCredentials(accessToken, apiVersion string) {
+	if accessToken != "" {
+		c.accessToken = accessToken
+	}
+	if apiVersion != "" {
+		c.apiVersion = apiVersion
 	}
 }
 
