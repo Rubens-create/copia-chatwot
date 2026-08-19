@@ -6,8 +6,8 @@
 *.dylib
 bin/
 dist/
-api
-worker
+/api
+/worker
 
 # Test binary, generated with `go test -c`
 *.test
