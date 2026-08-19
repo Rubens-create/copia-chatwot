@@ -1,5 +1,5 @@
 # Multi-stage build for Chatwoot Lite WhatsApp Gateway
-FROM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -13,11 +13,10 @@ RUN go mod download || true
 # Copy source code
 COPY . .
 
-# Build API binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /bin/api ./cmd/api
-
-# Build Worker binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /bin/worker ./cmd/worker
+# Build API & Worker binaries for the target architecture
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /bin/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /bin/worker ./cmd/worker
 
 # Final minimal runtime image
 FROM alpine:3.20
